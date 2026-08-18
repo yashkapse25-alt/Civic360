@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Civic360 - Local Civic Issues Reporting System</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+  </style>
+</head>
+<body class="bg-slate-100 font-sans text-slate-800">
+
+  <!-- Top Navigation Header -->
+  <header class="bg-indigo-900 text-white shadow-md sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+      <div class="flex items-center space-x-3">
+        <i class="fa-solid fa-circle-notch text-indigo-400 text-2xl animate-spin-slow"></i>
+        <div>
+          <h1 class="text-xl font-bold tracking-wide">CIVIC360</h1>
+          <p class="text-xs text-indigo-200">See It. Report It. Track It. Fix It.</p>
+        </div>
+      </div>
+      <div class="flex items-center space-x-4">
+        <span class="text-sm bg-indigo-800 px-3 py-1 rounded-full border border-indigo-700">
+          <i class="fa-solid fa-user-shield text-emerald-400 mr-1"></i> Role: <strong id="userRole">Citizen</strong>
+        </span>
+        <button onclick="toggleRole()" class="text-xs bg-indigo-700 hover:bg-indigo-600 px-3 py-1.5 rounded transition">
+          Switch View
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+    <!-- Left Sidebar / Navigation -->
+    <aside class="lg:col-span-3 bg-white rounded-xl shadow-sm p-4 space-y-2 border border-slate-200">
+      <nav class="space-y-1">
+        <button onclick="switchTab('report')" id="btn-report" class="tab-btn active w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left font-medium bg-indigo-50 text-indigo-700 border-l-4 border-indigo-600">
+          <i class="fa-solid fa-camera-retro"></i>
+          <span>Report Hazard</span>
+        </button>
+        <button onclick="switchTab('tracking')" id="btn-tracking" class="tab-btn w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left font-medium text-slate-600 hover:bg-slate-50">
+          <i class="fa-solid fa-route"></i>
+          <span>Track Reports</span>
+        </button>
+        <button onclick="switchTab('analytics')" id="btn-analytics" class="tab-btn w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left font-medium text-slate-600 hover:bg-slate-50">
+          <i class="fa-solid fa-chart-pie"></i>
+          <span>Analytics & Map</span>
+        </button>
+        <button onclick="switchTab('ai-vision')" id="btn-ai-vision" class="tab-btn w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left font-medium text-slate-600 hover:bg-slate-50">
+          <i class="fa-solid fa-brain"></i>
+          <span>AI Vision Inspection</span>
+        </button>
+      </nav>
+
+      <!-- System Notification Panel -->
+      <div class="mt-6 pt-4 border-t border-slate-100">
+        <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Live Updates</h3>
+        <div id="notifications" class="space-y-2 text-xs">
+          <div class="p-2 bg-slate-50 border-l-2 border-emerald-500 rounded text-slate-600">
+            <strong>#REP-4091:</strong> Status updated to <span class="text-emerald-600 font-semibold">Resolved</span>.
+          </div>
+          <div class="p-2 bg-slate-50 border-l-2 border-amber-500 rounded text-slate-600">
+            <strong>#REP-4102:</strong> Duplicate report detected nearby.
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Workspaces -->
+    <section class="lg:col-span-9">
+
+      <!-- TAB 1: Report Submission Module -->
+      <div id="tab-report" class="tab-content active bg-white rounded-xl shadow-sm p-6 border border-slate-200">
+        <h2 class="text-xl font-bold mb-1 text-slate-800">Submit a New Road Hazard</h2>
+        <p class="text-sm text-slate-500 mb-6">Upload an image and capture GPS locations to alert local authorities.</p>
+
+        <form id="reportForm" onsubmit="handleFormSubmit(event)" class="space-y-5">
+          <!-- Image Upload & Preview -->
+          <div>
+            <label class="block text-sm font-medium mb-1">Upload Photo</label>
+            <div class="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center hover:border-indigo-500 transition cursor-pointer relative bg-slate-50">
+              <input type="file" id="imageInput" accept="image/*" class="absolute inset-0 opacity-0 cursor-pointer" onchange="previewImage(event)">
+              <div id="uploadPlaceholder" class="space-y-1">
+                <i class="fa-solid fa-cloud-arrow-up text-3xl text-slate-400"></i>
+                <p class="text-sm font-medium text-slate-700">Click or drag image to upload</p>
+                <p class="text-xs text-slate-400">PNG, JPG, or WEBP up to 10MB</p>
+              </div>
+              <img id="imagePreview" class="hidden mx-auto max-h-48 rounded shadow-sm">
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- Hazard Category -->
+            <div>
+              <label class="block text-sm font-medium mb-1">Hazard Type</label>
+              <select required id="categoryInput" class="w-full rounded-lg border border-slate-300 p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                <option value="">Select Category</option>
+                <option value="Pothole">Pothole</option>
+                <option value="Surface Crack">Surface Crack / Alligator Cracking</option>
+                <option value="Open Drain">Open Drain / Manhole</option>
+                <option value="Debris/Garbage">Debris or Blockage</option>
+              </select>
+            </div>
+
+            <!-- GPS Tagging -->
+            <div>
+              <label class="block text-sm font-medium mb-1">Location / GPS Tag</label>
+              <div class="flex space-x-2">
+                <input type="text" id="gpsInput" placeholder="Lat, Long or Street Address" required class="flex-1 rounded-lg border border-slate-300 p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                <button type="button" onclick="getGPSLocation()" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 px-3 py-2 rounded-lg border border-indigo-200 text-sm font-medium transition">
+                  <i class="fa-solid fa-location-crosshairs mr-1"></i> GPS
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Description -->
+          <div>
+            <label class="block text-sm font-medium mb-1">Description & Context</label>
+            <textarea id="descInput" rows="3" placeholder="Provide extra context (e.g., depth of pothole, near traffic intersection)..." class="w-full rounded-lg border border-slate-300 p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"></textarea>
+          </div>
+
+          <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 rounded-lg shadow-md transition flex justify-center items-center space-x-2">
+            <i class="fa-solid fa-paper-plane"></i>
+            <span>Submit Report</span>
+          </button>
+        </form>
+      </div>
+
+      <!-- TAB 2: Report Tracking Module -->
+      <div id="tab-tracking" class="tab-content bg-white rounded-xl shadow-sm p-6 border border-slate-200">
+        <h2 class="text-xl font-bold mb-1 text-slate-800">Track & Manage Complaints</h2>
+        <p class="text-sm text-slate-500 mb-6">View live status updates, assigned priority, and duplicate detections.</p>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm border-collapse">
+            <thead>
+              <tr class="bg-slate-50 text-slate-500 border-b border-slate-200">
+                <th class="p-3">ID</th>
+                <th class="p-3">Type</th>
+                <th class="p-3">Priority Score</th>
+                <th class="p-3">Department</th>
+                <th class="p-3">Status</th>
+                <th class="p-3">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="trackingTable" class="divide-y divide-slate-100">
+              <tr>
+                <td class="p-3 font-semibold text-indigo-600">#REP-4102</td>
+                <td class="p-3">Pothole</td>
+                <td class="p-3"><span class="bg-red-100 text-red-700 text-xs px-2 py-1 rounded font-semibold">High (88/100)</span></td>
+                <td class="p-3">Roads & Maintenance</td>
+                <td class="p-3"><span class="bg-amber-100 text-amber-800 text-xs px-2 py-1 rounded">Under Review</span></td>
+                <td class="p-3"><button class="text-indigo-600 hover:underline text-xs">View Details</button></td>
+              </tr>
+              <tr>
+                <td class="p-3 font-semibold text-indigo-600">#REP-4091</td>
+                <td class="p-3">Surface Crack</td>
+                <td class="p-3"><span class="bg-emerald-100 text-emerald-700 text-xs px-2 py-1 rounded font-semibold">Low (32/100)</span></td>
+                <td class="p-3">Civic Infrastructure</td>
+                <td class="p-3"><span class="bg-emerald-100 text-emerald-800 text-xs px-2 py-1 rounded">Resolved</span></td>
+                <td class="p-3"><button class="text-indigo-600 hover:underline text-xs">Rate Repair</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- TAB 3: Analytics Dashboard Module -->
+      <div id="tab-analytics" class="tab-content bg-white rounded-xl shadow-sm p-6 border border-slate-200">
+        <h2 class="text-xl font-bold mb-1 text-slate-800">Analytics & Spatial Heatmap</h2>
+        <p class="text-sm text-slate-500 mb-6">Aggregated statistics for data-driven municipal repair decisions.</p>
+
+        <!-- KPI Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div class="p-4 bg-indigo-50 border border-indigo-100 rounded-lg">
+            <span class="text-xs font-semibold text-indigo-600 uppercase">Total Reports</span>
+            <div class="text-2xl font-bold text-indigo-900 mt-1">1,248</div>
+          </div>
+          <div class="p-4 bg-amber-50 border border-amber-100 rounded-lg">
+            <span class="text-xs font-semibold text-amber-600 uppercase">Pending Repairs</span>
+            <div class="text-2xl font-bold text-amber-900 mt-1">84</div>
+          </div>
+          <div class="p-4 bg-emerald-50 border border-emerald-100 rounded-lg">
+            <span class="text-xs font-semibold text-emerald-600 uppercase">Resolution Rate</span>
+            <div class="text-2xl font-bold text-emerald-900 mt-1">93.2%</div>
+          </div>
+        </div>
+
+        <!-- Simulated Map Placeholder -->
+        <div class="bg-slate-800 text-white rounded-xl h-64 flex flex-col items-center justify-center relative overflow-hidden">
+          <i class="fa-solid fa-map-location-dot text-5xl text-slate-600 mb-2"></i>
+          <p class="text-slate-400 text-sm">Interactive Spatial Map Overlay (OpenStreetMap API)</p>
+          <div class="absolute top-4 right-4 bg-slate-900/80 p-2 rounded text-xs space-y-1 border border-slate-700">
+            <div class="flex items-center space-x-2"><span class="w-3 h-3 bg-red-500 rounded-full inline-block"></span><span>High Risk Zone</span></div>
+            <div class="flex items-center space-x-2"><span class="w-3 h-3 bg-emerald-500 rounded-full inline-block"></span><span>Resolved</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 4: AI Vision Engine Page (Inspired by PDF Slide 9) -->
+      <div id="tab-ai-vision" class="tab-content bg-slate-900 text-slate-100 rounded-xl shadow-lg p-6 border border-slate-800">
+        <div class="flex justify-between items-center mb-4 border-b border-slate-800 pb-3">
+          <div>
+            <h2 class="text-xl font-mono font-bold text-emerald-400">AI VISION: ROAD SURFACE ANALYSIS</h2>
+            <p class="text-xs text-slate-400 font-mono">MODEL: ResNet/YOLO Hazard Detector v2.1</p>
+          </div>
+          <span class="bg-emerald-950 text-emerald-400 border border-emerald-800 text-xs px-2.5 py-1 rounded font-mono">LIVE INFERENCE</span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <!-- Live Bounding-Box Canvas Mockup -->
+          <div class="md:col-span-2 bg-black rounded border border-slate-800 p-2 relative flex items-center justify-center min-h-[250px]">
+            <i class="fa-solid fa-road text-6xl text-slate-800"></i>
+            <!-- Simulated Bounding Boxes -->
+            <div class="absolute border-2 border-emerald-400 bg-emerald-500/20 text-[10px] font-mono text-emerald-300 p-1 top-12 left-16 rounded">
+              Pothole: 94% Confidence
+            </div>
+            <div class="absolute border-2 border-amber-400 bg-amber-500/20 text-[10px] font-mono text-amber-300 p-1 bottom-10 right-20 rounded">
+              Cracking: 81% Confidence
+            </div>
+          </div>
+
+          <!-- Model Metrics -->
+          <div class="bg-slate-950 p-4 rounded border border-slate-800 font-mono text-xs space-y-3">
+            <h3 class="text-slate-400 font-bold uppercase border-b border-slate-800 pb-1">Performance</h3>
+            <div class="flex justify-between"><span>Accuracy:</span><span class="text-emerald-400">96.7%</span></div>
+            <div class="flex justify-between"><span>Precision:</span><span class="text-emerald-400">94.1%</span></div>
+            <div class="flex justify-between"><span>Recall:</span><span class="text-emerald-400">92.5%</span></div>
+            <div class="pt-2 border-t border-slate-800">
+              <span class="text-slate-400 block mb-1">Recommended Action:</span>
+              <span class="text-amber-400">Priority Level 2 -> Route to Highways Dept.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <script>
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(el => {
+        el.classList.remove('bg-indigo-50', 'text-indigo-700', 'border-l-4', 'border-indigo-600');
+        el.classList.add('text-slate-600');
+      });
+
+      document.getElementById('tab-' + tabId).classList.add('active');
+      const activeBtn = document.getElementById('btn-' + tabId);
+      activeBtn.classList.add('bg-indigo-50', 'text-indigo-700', 'border-l-4', 'border-indigo-600');
+      activeBtn.classList.remove('text-slate-600');
+    }
+
+    function toggleRole() {
+      const roleElem = document.getElementById('userRole');
+      roleElem.innerText = roleElem.innerText === 'Citizen' ? 'Municipal Admin' : 'Citizen';
+    }
+
+    function previewImage(event) {
+      const input = event.target;
+      if (input.files && input.files[0]) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const img = document.getElementById('imagePreview');
+          img.src = e.target.result;
+          img.classList.remove('hidden');
+          document.getElementById('uploadPlaceholder').classList.add('hidden');
+        }
+        reader.readAsDataURL(input.files[0]);
+      }
+    }
+
+    function getGPSLocation() {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition((pos) => {
+          document.getElementById('gpsInput').value = `${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`;
+        }, () => {
+          alert('Geolocation failed or permission denied. Entering fallback mode.');
+          document.getElementById('gpsInput').value = "18.5204° N, 73.8567° E";
+        });
+      } else {
+        document.getElementById('gpsInput').value = "18.5204° N, 73.8567° E";
+      }
+    }
+
+    function handleFormSubmit(e) {
+      e.preventDefault();
+      const cat = document.getElementById('categoryInput').value;
+      const gps = document.getElementById('gpsInput').value;
+      
+      const newRow = `
+        <tr>
+          <td class="p-3 font-semibold text-indigo-600">#REP-${Math.floor(1000 + Math.random() * 9000)}</td>
+          <td class="p-3">${cat}</td>
+          <td class="p-3"><span class="bg-amber-100 text-amber-700 text-xs px-2 py-1 rounded font-semibold">Medium (65/100)</span></td>
+          <td class="p-3">Automated Route</td>
+          <td class="p-3"><span class="bg-indigo-100 text-indigo-800 text-xs px-2 py-1 rounded">Submitted</span></td>
+          <td class="p-3"><button class="text-indigo-600 hover:underline text-xs">View Details</button></td>
+        </tr>
+      `;
+      document.getElementById('trackingTable').insertAdjacentHTML('afterbegin', newRow);
+      alert('Report successfully logged and passed to AI Pipeline for priority ranking!');
+      switchTab('tracking');
+    }
+  </script>
+</body>
+</html>
