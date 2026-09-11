@@ -13,7 +13,7 @@ st.set_page_config(
     layout="wide",
 )
 
-# Connect to Supabase using secrets
+# Connect to Supabase using secrets (safely stripping trailing slashes)
 supabase_url = st.secrets["SUPABASE_URL"].strip().rstrip("/")
 supabase_key = st.secrets["SUPABASE_KEY"].strip()
 supabase = create_client(supabase_url, supabase_key)
@@ -23,11 +23,10 @@ supabase = create_client(supabase_url, supabase_key)
 # 2. HELPER FUNCTIONS
 # ==========================================
 def fetch_reports():
-    """Fetch all reports ordered by creation time targeting public schema explicitly."""
+    """Fetch all reports ordered by creation time."""
     try:
         response = (
-            supabase.schema("public")
-            .table("reports")
+            supabase.table("reports")
             .select("*")
             .order("created_at", desc=True)
             .execute()
@@ -39,23 +38,27 @@ def fetch_reports():
 
 
 def upload_photo(file, report_id):
-    """Upload photo to Supabase storage bucket and return public URL string."""
+    """Upload photo to Supabase storage bucket reliably in v2.x SDK."""
     try:
         clean_filename = "".join(
             c for c in file.name if c.isalnum() or c in (".", "_", "-")
         )
         file_path = f"{report_id}_{clean_filename}"
+
+        # Read binary stream explicitly
         file_bytes = file.getvalue()
 
-        # Direct upload without passing unsupported file_options dict
+        # Direct upload without passing extra kwargs that trigger SDK type errors
         supabase.storage.from_("evidence").upload(
             path=file_path, file=file_bytes
         )
 
-        # Retrieve public URL safely across all SDK versions
+        # Generate and return public URL string safely across all SDK versions
         res = supabase.storage.from_("evidence").get_public_url(file_path)
 
-        if isinstance(res, dict):
+        if isinstance(res, str):
+            return res
+        elif isinstance(res, dict):
             return res.get("publicUrl") or res.get("public_url")
         return str(res)
     except Exception as e:
@@ -186,12 +189,12 @@ if nav_choice == "📷 Report Hazard":
             else:
                 rep_id = f"REP-{int(datetime.now().timestamp())}"
 
-                # Upload photo if attached
+                # Handle file upload safely
                 image_url = None
                 if uploaded_file is not None:
                     image_url = upload_photo(uploaded_file, rep_id)
 
-                # Format payload with strict type handling
+                # Build clean database dictionary with primitive Python types
                 row_data = {
                     "report_id": str(rep_id),
                     "type": str(final_category),
@@ -205,9 +208,7 @@ if nav_choice == "📷 Report Hazard":
                 }
 
                 try:
-                    supabase.schema("public").table("reports").insert(
-                        row_data
-                    ).execute()
+                    supabase.table("reports").insert(row_data).execute()
                     st.success(
                         f"Report **{rep_id}** saved permanently in Supabase!"
                     )
@@ -290,7 +291,7 @@ elif nav_choice == "🛣️ Issue Tracker & Operations":
                         )
 
                         if new_status != curr_status:
-                            supabase.schema("public").table("reports").update(
+                            supabase.table("reports").update(
                                 {"status": new_status}
                             ).eq("id", row_id).execute()
                             st.success("Status updated!")
