@@ -2,9 +2,10 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 from streamlit_geolocation import streamlit_geolocation
+from supabase import create_client
 
 # ==========================================
-# 1. PAGE CONFIGURATION & STYLING
+# 1. PAGE CONFIGURATION & SUPABASE SETUP
 # ==========================================
 st.set_page_config(
     page_title="Civic360 | Live Municipal Operations",
@@ -12,30 +13,56 @@ st.set_page_config(
     layout="wide",
 )
 
-st.markdown(
-    """
-    <style>
-        .main .block-container { padding-top: 1.5rem; padding-bottom: 2rem; }
-    </style>
-""",
-    unsafe_allow_html=True,
-)
+# Connect to Supabase using secrets
+supabase_url = st.secrets["SUPABASE_URL"]
+supabase_key = st.secrets["SUPABASE_KEY"]
+supabase = create_client(supabase_url, supabase_key)
+
 
 # ==========================================
-# 2. DYNAMIC DATABASE INITIALIZATION
+# 2. HELPER FUNCTIONS
 # ==========================================
-if "reports_db" not in st.session_state:
-    st.session_state.reports_db = []
+def fetch_reports():
+    """Fetch all reports ordered by creation time."""
+    response = (
+        supabase.table("reports")
+        .select("*")
+        .order("created_at", desc=True)
+        .execute()
+    )
+    return response.data
 
+
+def upload_photo(file, report_id):
+    """Upload photo to Supabase storage bucket and return public URL."""
+    try:
+        file_path = f"{report_id}_{file.name}"
+        file_bytes = file.getvalue()
+
+        # Upload file to 'evidence' bucket
+        supabase.storage.from_("evidence").upload(
+            file_path, file_bytes, {"content-type": file.type}
+        )
+
+        # Get public URL
+        public_url = supabase.storage.from_("evidence").get_public_url(
+            file_path
+        )
+        return public_url
+    except Exception as e:
+        st.warning(f"Image upload note: {e}")
+        return None
+
+
+# ==========================================
+# 3. SIDEBAR NAVIGATION
+# ==========================================
 if "role" not in st.session_state:
     st.session_state.role = "Citizen"
 
-# ==========================================
-# 3. SIDEBAR NAVIGATION & VARIABLE DEFINITION
-# ==========================================
 with st.sidebar:
     st.title("🌀 CIVIC360")
-    st.caption("Live Municipal Operations & Citizen Portal")
+    st.caption("Live Municipal Operations Portal")
     st.divider()
 
     st.subheader("Access Control")
@@ -48,7 +75,6 @@ with st.sidebar:
     st.divider()
 
     st.subheader("Navigation")
-    # Defining nav_choice before using it in conditional statements
     nav_choice = st.radio(
         "Select Portal Module:",
         [
@@ -60,17 +86,13 @@ with st.sidebar:
     )
 
 # ==========================================
-# 4. MODULE 1: REPORT HAZARD (GPS + CUSTOM HAZARD)
+# 4. MODULE 1: REPORT HAZARD
 # ==========================================
 if nav_choice == "📷 Report Hazard":
     st.header("Report Infrastructure Issue")
-    st.caption(
-        "Capture your real-time location and upload photographic proof to dispatch local crews."
-    )
+    st.caption("Submissions are permanently saved to Supabase.")
 
     st.subheader("1. Live GPS Location Capture")
-    st.info("Click the button below to fetch your device's live coordinates.")
-
     location = streamlit_geolocation()
     user_lat = location.get("latitude")
     user_lon = location.get("longitude")
@@ -81,12 +103,12 @@ if nav_choice == "📷 Report Hazard":
         )
     else:
         st.warning(
-            "⚠️ Location not captured yet. Please grant browser location permission and click 'Get Location'."
+            "⚠️ Location not captured yet. Please grant browser permissions and click 'Get Location'."
         )
 
     st.divider()
 
-    with st.form("hazard_submission_form", clear_on_submit=True):
+    with st.form("hazard_form", clear_on_submit=True):
         st.subheader("2. Hazard Details & Documentation")
 
         col_a, col_b = st.columns(2)
@@ -107,8 +129,7 @@ if nav_choice == "📷 Report Hazard":
             custom_category = ""
             if category_selection == "Other (Specify Below)":
                 custom_category = st.text_input(
-                    "Custom Hazard Type*",
-                    placeholder="e.g. Water Main Leak, Fallen Tree Branch",
+                    "Custom Hazard Type*", placeholder="e.g. Fallen Tree"
                 )
 
             severity = st.select_slider(
@@ -120,18 +141,16 @@ if nav_choice == "📷 Report Hazard":
         with col_b:
             address = st.text_input(
                 "Street Address / Landmark*",
-                placeholder="e.g. Opposite City Hospital, Main Street",
+                placeholder="e.g. Opposite City Hospital",
             )
 
         uploaded_file = st.file_uploader(
             "Attach Photographic Proof", type=["png", "jpg", "jpeg", "webp"]
         )
-        if uploaded_file is not None:
-            st.image(uploaded_file, caption="Evidence Preview", width=250)
 
         description = st.text_area(
             "Operational Description*",
-            placeholder="Describe dimensions, traffic impact, hazards to pedestrians...",
+            placeholder="Describe dimensions, traffic impact...",
             height=100,
         )
 
@@ -154,41 +173,31 @@ if nav_choice == "📷 Report Hazard":
             ):
                 st.error("Please specify your custom hazard type.")
             elif not user_lat or not user_lon:
-                st.error(
-                    "GPS coordinates missing! Please capture your live location before submitting."
-                )
+                st.error("GPS coordinates missing! Capture location first.")
             else:
-                report_id = f"REP-{len(st.session_state.reports_db) + 1001}"
-                p_scores = {"Low": 30, "Medium": 60, "High": 85, "Critical": 98}
+                rep_id = f"REP-{int(datetime.now().timestamp())}"
 
-                dept_map = {
-                    "Pothole": "Roads & Maintenance",
-                    "Surface Crack / Alligator Cracking": "Civic Infrastructure",
-                    "Open Drain / Manhole": "Sanitation & Drainage",
-                    "Debris or Road Blockage": "Public Works",
-                    "Traffic Light / Sign Failure": "Traffic Engineering",
-                    "Streetlight Outage": "Electrical Grid",
-                }
+                # Upload photo if attached
+                image_url = None
+                if uploaded_file is not None:
+                    image_url = upload_photo(uploaded_file, rep_id)
 
-                new_report = {
-                    "id": report_id,
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                # Insert row into Supabase
+                row_data = {
+                    "report_id": rep_id,
                     "type": final_category,
                     "severity": severity,
-                    "priority_score": p_scores[severity],
-                    "dept": dept_map.get(
-                        final_category, "General Administration"
-                    ),
-                    "status": "Submitted",
                     "address": address,
-                    "lat": user_lat,
-                    "lon": user_lon,
                     "description": description,
+                    "lat": float(user_lat),
+                    "lon": float(user_lon),
+                    "status": "Submitted",
+                    "image_url": image_url,
                 }
 
-                st.session_state.reports_db.insert(0, new_report)
+                supabase.table("reports").insert(row_data).execute()
                 st.success(
-                    f"Report **{report_id}** ({final_category}) successfully dispatched to **{new_report['dept']}**!"
+                    f"Report **{rep_id}** saved permanently in Supabase!"
                 )
                 st.balloons()
 
@@ -197,16 +206,18 @@ if nav_choice == "📷 Report Hazard":
 # ==========================================
 elif nav_choice == "🛣️ Issue Tracker & Operations":
     st.header("Municipal Operations Dashboard")
-    st.caption("Real-time management of active user-submitted tickets.")
+    st.caption("Live dynamic queue synced with Supabase.")
 
-    total_reps = len(st.session_state.reports_db)
+    reports = fetch_reports()
+
+    total_reps = len(reports)
     pending_reps = sum(
         1
-        for r in st.session_state.reports_db
-        if r["status"] in ["Submitted", "Under Review", "In Progress"]
+        for r in reports
+        if r.get("status") in ["Submitted", "Under Review", "In Progress"]
     )
     resolved_reps = sum(
-        1 for r in st.session_state.reports_db if r["status"] == "Resolved"
+        1 for r in reports if r.get("status") == "Resolved"
     )
 
     m1, m2, m3 = st.columns(3)
@@ -216,68 +227,90 @@ elif nav_choice == "🛣️ Issue Tracker & Operations":
 
     st.divider()
 
-    if not st.session_state.reports_db:
-        st.info(
-            "No live reports logged yet. Go to 'Report Hazard' to submit the first issue."
-        )
+    if not reports:
+        st.info("No live reports in database yet.")
     else:
-        for idx, report in enumerate(st.session_state.reports_db):
+        for report in reports:
+            row_id = report["id"]
+            rep_id = report.get("report_id", "REP-UNKNOWN")
+
             with st.expander(
-                f"**[{report['id']}] {report['type']}** — {report['address']} ({report['status']})"
+                f"**[{rep_id}] {report.get('type')}** — {report.get('address')} ({report.get('status')})"
             ):
                 c1, c2, c3 = st.columns([2, 2, 2])
                 with c1:
-                    st.write(f"**Logged At:** {report['timestamp']}")
-                    st.write(f"**Department:** {report['dept']}")
-                    st.write(f"**Address:** {report['address']}")
-                with c2:
-                    st.write(f"**Severity:** {report['severity']}")
                     st.write(
-                        f"**Live Coordinates:** {report['lat']:.4f}, {report['lon']:.4f}"
+                        f"**Logged At:** {report.get('created_at', '')[:16]}"
+                    )
+                    st.write(f"**Address:** {report.get('address')}")
+                with c2:
+                    st.write(f"**Severity:** {report.get('severity')}")
+                    st.write(
+                        f"**GPS:** {report.get('lat', 0):.4f}, {report.get('lon', 0):.4f}"
                     )
                 with c3:
-                    st.write(f"**Current Status:** `{report['status']}`")
+                    st.write(f"**Current Status:** `{report.get('status')}`")
 
                     if st.session_state.role in [
                         "Municipal Admin",
                         "Field Technician",
                     ]:
+                        curr_status = report.get("status", "Submitted")
+                        status_options = [
+                            "Submitted",
+                            "Under Review",
+                            "In Progress",
+                            "Resolved",
+                        ]
+                        idx = (
+                            status_options.index(curr_status)
+                            if curr_status in status_options
+                            else 0
+                        )
+
                         new_status = st.selectbox(
                             "Update Status",
-                            ["Submitted", "Under Review", "In Progress", "Resolved"],
-                            index=[
-                                "Submitted",
-                                "Under Review",
-                                "In Progress",
-                                "Resolved",
-                            ].index(report["status"]),
-                            key=f"status_{report['id']}_{idx}",
+                            status_options,
+                            index=idx,
+                            key=f"status_{row_id}",
                         )
-                        if new_status != report["status"]:
-                            st.session_state.reports_db[idx][
-                                "status"
-                            ] = new_status
+
+                        if new_status != curr_status:
+                            # Update status directly in Supabase
+                            supabase.table("reports").update(
+                                {"status": new_status}
+                            ).eq("id", row_id).execute()
+                            st.success("Status updated!")
                             st.rerun()
 
                 st.markdown("---")
-                st.write(f"**Description:** {report['description']}")
+                st.write(f"**Description:** {report.get('description')}")
+                if report.get("image_url"):
+                    st.image(
+                        report["image_url"],
+                        caption="Cloud Evidence Photo",
+                        width=300,
+                    )
 
 # ==========================================
 # 6. MODULE 3: ANALYTICS & SPATIAL HEATMAP
 # ==========================================
 elif nav_choice == "📊 Analytics & Spatial Heatmap":
     st.header("Real-Time Spatial Analytics")
+    reports = fetch_reports()
 
-    if not st.session_state.reports_db:
-        st.info("No spatial data available. Submit a hazard to render analytics.")
+    if not reports:
+        st.info("No spatial data available in database.")
     else:
-        df_reports = pd.DataFrame(st.session_state.reports_db)
+        df_reports = pd.DataFrame(reports)
 
         col_map, col_chart = st.columns([1.5, 1])
         with col_map:
             st.subheader("Live Spatial Coordinates Map")
-            st.map(df_reports[["lat", "lon"]], zoom=12)
+            if "lat" in df_reports.columns and "lon" in df_reports.columns:
+                st.map(df_reports[["lat", "lon"]], zoom=12)
 
         with col_chart:
             st.subheader("Submissions by Classification")
-            st.bar_chart(df_reports["type"].value_counts())
+            if "type" in df_reports.columns:
+                st.bar_chart(df_reports["type"].value_counts())
