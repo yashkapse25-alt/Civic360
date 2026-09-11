@@ -31,41 +31,38 @@ def fetch_reports():
             .order("created_at", desc=True)
             .execute()
         )
-        return response.data
+        return response.data if response.data else []
     except Exception as e:
         st.error(f"Error fetching reports: {e}")
         return []
 
 
 def upload_photo(file, report_id):
-    """Upload photo to Supabase storage bucket and return public URL."""
+    """Upload photo to Supabase storage bucket and return public URL string."""
     try:
-        # Sanitize filename
         clean_filename = "".join(
             c for c in file.name if c.isalnum() or c in (".", "_", "-")
         )
         file_path = f"{report_id}_{clean_filename}"
         file_bytes = file.getvalue()
 
-        # Extract content type string safely
-        content_type = getattr(file, "type", "image/jpeg")
-
-        # Upload file to 'evidence' bucket with safe dictionary options
+        # Upload to 'evidence' bucket
         supabase.storage.from_("evidence").upload(
             path=file_path,
             file=file_bytes,
-            file_options={"content-type": content_type, "x-upsert": "true"},
+            file_options={"content-type": file.type, "x-upsert": "true"},
         )
 
-        # Retrieve public URL string
-        public_url = supabase.storage.from_("evidence").get_public_url(
-            file_path
-        )
-        return public_url
+        # Get public URL safely regardless of SDK version
+        url_data = supabase.storage.from_("evidence").get_public_url(file_path)
+
+        # If supabase returns a dict or string, extract the URL string safely
+        if isinstance(url_data, dict):
+            return url_data.get("publicUrl", url_data.get("public_url", None))
+        return str(url_data)
     except Exception as e:
         st.warning(f"Image upload note: {e}")
         return None
-
 
 # ==========================================
 # 3. SIDEBAR NAVIGATION
