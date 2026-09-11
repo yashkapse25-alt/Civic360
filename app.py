@@ -24,27 +24,40 @@ supabase = create_client(supabase_url, supabase_key)
 # ==========================================
 def fetch_reports():
     """Fetch all reports ordered by creation time."""
-    response = (
-        supabase.table("reports")
-        .select("*")
-        .order("created_at", desc=True)
-        .execute()
-    )
-    return response.data
+    try:
+        response = (
+            supabase.table("reports")
+            .select("*")
+            .order("created_at", desc=True)
+            .execute()
+        )
+        return response.data
+    except Exception as e:
+        st.error(f"Error fetching reports: {e}")
+        return []
 
 
 def upload_photo(file, report_id):
     """Upload photo to Supabase storage bucket and return public URL."""
     try:
-        file_path = f"{report_id}_{file.name}"
+        # Sanitize filename
+        clean_filename = "".join(
+            c for c in file.name if c.isalnum() or c in (".", "_", "-")
+        )
+        file_path = f"{report_id}_{clean_filename}"
         file_bytes = file.getvalue()
 
-        # Upload file to 'evidence' bucket
+        # Extract content type string safely
+        content_type = getattr(file, "type", "image/jpeg")
+
+        # Upload file to 'evidence' bucket with safe dictionary options
         supabase.storage.from_("evidence").upload(
-            file_path, file_bytes, {"content-type": file.type}
+            path=file_path,
+            file=file_bytes,
+            file_options={"content-type": content_type, "x-upsert": "true"},
         )
 
-        # Get public URL
+        # Retrieve public URL string
         public_url = supabase.storage.from_("evidence").get_public_url(
             file_path
         )
@@ -182,24 +195,27 @@ if nav_choice == "📷 Report Hazard":
                 if uploaded_file is not None:
                     image_url = upload_photo(uploaded_file, rep_id)
 
-                # Insert row into Supabase
+                # Format payload explicitly to prevent database type mismatches
                 row_data = {
-                    "report_id": rep_id,
-                    "type": final_category,
-                    "severity": severity,
-                    "address": address,
-                    "description": description,
+                    "report_id": str(rep_id),
+                    "type": str(final_category),
+                    "severity": str(severity),
+                    "address": str(address),
+                    "description": str(description),
                     "lat": float(user_lat),
                     "lon": float(user_lon),
                     "status": "Submitted",
-                    "image_url": image_url,
+                    "image_url": str(image_url) if image_url else None,
                 }
 
-                supabase.table("reports").insert(row_data).execute()
-                st.success(
-                    f"Report **{rep_id}** saved permanently in Supabase!"
-                )
-                st.balloons()
+                try:
+                    supabase.table("reports").insert(row_data).execute()
+                    st.success(
+                        f"Report **{rep_id}** saved permanently in Supabase!"
+                    )
+                    st.balloons()
+                except Exception as e:
+                    st.error(f"Database save error: {e}")
 
 # ==========================================
 # 5. MODULE 2: ISSUE TRACKER & OPERATIONS
@@ -276,7 +292,6 @@ elif nav_choice == "🛣️ Issue Tracker & Operations":
                         )
 
                         if new_status != curr_status:
-                            # Update status directly in Supabase
                             supabase.table("reports").update(
                                 {"status": new_status}
                             ).eq("id", row_id).execute()
