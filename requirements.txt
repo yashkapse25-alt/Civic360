@@ -2,3 +2,4 @@ streamlit
 pandas
 streamlit>=1.30.0
 pandas>=2.0.0
+streamlit-geolocation>=0.0.8
