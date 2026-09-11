@@ -14,8 +14,8 @@ st.set_page_config(
 )
 
 # Connect to Supabase using secrets
-supabase_url = st.secrets["SUPABASE_URL"]
-supabase_key = st.secrets["SUPABASE_KEY"]
+supabase_url = st.secrets["SUPABASE_URL"].strip().rstrip("/")
+supabase_key = st.secrets["SUPABASE_KEY"].strip()
 supabase = create_client(supabase_url, supabase_key)
 
 
@@ -23,10 +23,11 @@ supabase = create_client(supabase_url, supabase_key)
 # 2. HELPER FUNCTIONS
 # ==========================================
 def fetch_reports():
-    """Fetch all reports ordered by creation time."""
+    """Fetch all reports ordered by creation time targeting public schema explicitly."""
     try:
         response = (
-            supabase.table("reports")
+            supabase.schema("public")
+            .table("reports")
             .select("*")
             .order("created_at", desc=True)
             .execute()
@@ -46,23 +47,21 @@ def upload_photo(file, report_id):
         file_path = f"{report_id}_{clean_filename}"
         file_bytes = file.getvalue()
 
-        # Upload to 'evidence' bucket
+        # Direct upload without passing unsupported file_options dict
         supabase.storage.from_("evidence").upload(
-            path=file_path,
-            file=file_bytes,
-            file_options={"content-type": file.type, "x-upsert": "true"},
+            path=file_path, file=file_bytes
         )
 
-        # Get public URL safely regardless of SDK version
-        url_data = supabase.storage.from_("evidence").get_public_url(file_path)
+        # Retrieve public URL safely across all SDK versions
+        res = supabase.storage.from_("evidence").get_public_url(file_path)
 
-        # If supabase returns a dict or string, extract the URL string safely
-        if isinstance(url_data, dict):
-            return url_data.get("publicUrl", url_data.get("public_url", None))
-        return str(url_data)
+        if isinstance(res, dict):
+            return res.get("publicUrl") or res.get("public_url")
+        return str(res)
     except Exception as e:
         st.warning(f"Image upload note: {e}")
         return None
+
 
 # ==========================================
 # 3. SIDEBAR NAVIGATION
@@ -192,7 +191,7 @@ if nav_choice == "📷 Report Hazard":
                 if uploaded_file is not None:
                     image_url = upload_photo(uploaded_file, rep_id)
 
-                # Format payload explicitly to prevent database type mismatches
+                # Format payload with strict type handling
                 row_data = {
                     "report_id": str(rep_id),
                     "type": str(final_category),
@@ -206,7 +205,9 @@ if nav_choice == "📷 Report Hazard":
                 }
 
                 try:
-                    supabase.table("reports").insert(row_data).execute()
+                    supabase.schema("public").table("reports").insert(
+                        row_data
+                    ).execute()
                     st.success(
                         f"Report **{rep_id}** saved permanently in Supabase!"
                     )
@@ -289,7 +290,7 @@ elif nav_choice == "🛣️ Issue Tracker & Operations":
                         )
 
                         if new_status != curr_status:
-                            supabase.table("reports").update(
+                            supabase.schema("public").table("reports").update(
                                 {"status": new_status}
                             ).eq("id", row_id).execute()
                             st.success("Status updated!")
