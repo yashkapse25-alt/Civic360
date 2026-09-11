@@ -1,68 +1,5 @@
-from datetime import datetime
-import pandas as pd
-import streamlit as st
-from streamlit_geolocation import streamlit_geolocation
-
 # ==========================================
-# PAGE CONFIGURATION & STYLING
-# ==========================================
-st.set_page_config(
-    page_title="Civic360 | Live Municipal Operations",
-    page_icon="🌀",
-    layout="wide",
-)
-
-# Custom CSS
-st.markdown(
-    """
-    <style>
-        .main .block-container { padding-top: 1.5rem; padding-bottom: 2rem; }
-        .stBadge { font-weight: 600; }
-    </style>
-""",
-    unsafe_allow_html=True,
-)
-
-# ==========================================
-# DYNAMIC DATABASE INITIALIZATION
-# ==========================================
-# Initialized as an empty list so the portal starts fresh without dummy data
-if "reports_db" not in st.session_state:
-    st.session_state.reports_db = []
-
-if "role" not in st.session_state:
-    st.session_state.role = "Citizen"
-
-# ==========================================
-# NAVIGATION & SIDEBAR
-# ==========================================
-with st.sidebar:
-    st.title("🌀 CIVIC360")
-    st.caption("Live Municipal Operations & Citizen Portal")
-    st.divider()
-
-    st.subheader("Access Control")
-    st.session_state.role = st.selectbox(
-        "Current Session Role:",
-        ["Citizen", "Municipal Admin", "Field Technician"],
-        index=0 if st.session_state.role == "Citizen" else 1,
-    )
-
-    st.divider()
-
-    st.subheader("Navigation")
-    nav_choice = st.radio(
-        "Select Portal Module:",
-        [
-            "📷 Report Hazard",
-            "🛣️ Issue Tracker & Operations",
-            "📊 Analytics & Spatial Heatmap",
-        ],
-        label_visibility="collapsed",
-    )
-
-# ==========================================
-# MODULE 1: REPORT HAZARD (LIVE GPS)
+# MODULE 1: REPORT HAZARD (LIVE GPS + CUSTOM HAZARD)
 # ==========================================
 if nav_choice == "📷 Report Hazard":
     st.header("Report Infrastructure Issue")
@@ -96,7 +33,8 @@ if nav_choice == "📷 Report Hazard":
 
         col_a, col_b = st.columns(2)
         with col_a:
-            category = st.selectbox(
+            # Preset categories + "Other" option
+            category_selection = st.selectbox(
                 "Hazard Classification*",
                 [
                     "Pothole",
@@ -105,8 +43,18 @@ if nav_choice == "📷 Report Hazard":
                     "Debris or Road Blockage",
                     "Traffic Light / Sign Failure",
                     "Streetlight Outage",
+                    "Other (Specify Below)",  # Custom hazard trigger
                 ],
             )
+
+            # Dynamic field for custom hazard input
+            custom_category = ""
+            if category_selection == "Other (Specify Below)":
+                custom_category = st.text_input(
+                    "Custom Hazard Type*",
+                    placeholder="e.g. Water Main Leak, Fallen Tree Branch",
+                )
+
             severity = st.select_slider(
                 "Observed Severity*",
                 options=["Low", "Medium", "High", "Critical"],
@@ -136,8 +84,20 @@ if nav_choice == "📷 Report Hazard":
         )
 
         if submitted:
+            # Determine final category label
+            final_category = (
+                custom_category.strip()
+                if category_selection == "Other (Specify Below)"
+                else category_selection
+            )
+
             if not address or not description:
                 st.error("Please fill in all required fields marked with *")
+            elif (
+                category_selection == "Other (Specify Below)"
+                and not custom_category.strip()
+            ):
+                st.error("Please specify your custom hazard type.")
             elif not user_lat or not user_lon:
                 st.error(
                     "GPS coordinates missing! Please capture your live location before submitting."
@@ -155,14 +115,16 @@ if nav_choice == "📷 Report Hazard":
                     "Streetlight Outage": "Electrical Grid",
                 }
 
-                # Save new report directly to active state database
+                # Save new report directly to active database
                 new_report = {
                     "id": report_id,
                     "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                    "type": category,
+                    "type": final_category,
                     "severity": severity,
                     "priority_score": p_scores[severity],
-                    "dept": dept_map.get(category, "General Administration"),
+                    "dept": dept_map.get(
+                        final_category, "General Administration"
+                    ),
                     "status": "Submitted",
                     "address": address,
                     "lat": user_lat,
@@ -172,96 +134,6 @@ if nav_choice == "📷 Report Hazard":
 
                 st.session_state.reports_db.insert(0, new_report)
                 st.success(
-                    f"Report **{report_id}** successfully dispatched to **{new_report['dept']}**!"
+                    f"Report **{report_id}** ({final_category}) successfully dispatched to **{new_report['dept']}**!"
                 )
                 st.balloons()
-
-# ==========================================
-# MODULE 2: ISSUE TRACKER & OPERATIONS
-# ==========================================
-elif nav_choice == "🛣️ Issue Tracker & Operations":
-    st.header("Municipal Operations Dashboard")
-    st.caption("Real-time management of active user-submitted tickets.")
-
-    total_reps = len(st.session_state.reports_db)
-    pending_reps = sum(
-        1
-        for r in st.session_state.reports_db
-        if r["status"] in ["Submitted", "Under Review", "In Progress"]
-    )
-    resolved_reps = sum(
-        1 for r in st.session_state.reports_db if r["status"] == "Resolved"
-    )
-
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Live Logged Tickets", total_reps)
-    m2.metric("Active Queue", pending_reps)
-    m3.metric("Resolved", resolved_reps)
-
-    st.divider()
-
-    if not st.session_state.reports_db:
-        st.info(
-            "No live reports logged yet. Go to 'Report Hazard' to submit the first issue."
-        )
-    else:
-        for idx, report in enumerate(st.session_state.reports_db):
-            with st.expander(
-                f"**[{report['id']}] {report['type']}** — {report['address']} ({report['status']})"
-            ):
-                c1, c2, c3 = st.columns([2, 2, 2])
-                with c1:
-                    st.write(f"**Logged At:** {report['timestamp']}")
-                    st.write(f"**Department:** {report['dept']}")
-                    st.write(f"**Address:** {report['address']}")
-                with c2:
-                    st.write(f"**Severity:** {report['severity']}")
-                    st.write(
-                        f"**Live Coordinates:** {report['lat']:.4f}, {report['lon']:.4f}"
-                    )
-                with c3:
-                    st.write(f"**Current Status:** `{report['status']}`")
-
-                    if st.session_state.role in [
-                        "Municipal Admin",
-                        "Field Technician",
-                    ]:
-                        new_status = st.selectbox(
-                            "Update Status",
-                            ["Submitted", "Under Review", "In Progress", "Resolved"],
-                            index=[
-                                "Submitted",
-                                "Under Review",
-                                "In Progress",
-                                "Resolved",
-                            ].index(report["status"]),
-                            key=f"status_{report['id']}_{idx}",
-                        )
-                        if new_status != report["status"]:
-                            st.session_state.reports_db[idx][
-                                "status"
-                            ] = new_status
-                            st.rerun()
-
-                st.markdown("---")
-                st.write(f"**Description:** {report['description']}")
-
-# ==========================================
-# MODULE 3: ANALYTICS & SPATIAL HEATMAP
-# ==========================================
-elif nav_choice == "📊 Analytics & Spatial Heatmap":
-    st.header("Real-Time Spatial Analytics")
-
-    if not st.session_state.reports_db:
-        st.info("No spatial data available. Submit a hazard to render analytics.")
-    else:
-        df_reports = pd.DataFrame(st.session_state.reports_db)
-
-        col_map, col_chart = st.columns([1.5, 1])
-        with col_map:
-            st.subheader("Live Spatial Coordinates Map")
-            st.map(df_reports[["lat", "lon"]], zoom=12)
-
-        with col_chart:
-            st.subheader("Submissions by Classification")
-            st.bar_chart(df_reports["type"].value_counts())
