@@ -2,9 +2,10 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 from streamlit_geolocation import streamlit_geolocation
+from supabase import create_client
 
 # ==========================================
-# 1. PAGE CONFIGURATION
+# 1. PAGE CONFIGURATION & SUPABASE SETUP
 # ==========================================
 st.set_page_config(
     page_title="Civic360 | Live Municipal Operations",
@@ -12,39 +13,57 @@ st.set_page_config(
     layout="wide",
 )
 
-# Initialize mock in-memory session store
-if "reports" not in st.session_state:
-    st.session_state.reports = [
-        {
-            "id": 1,
-            "report_id": "REP-1710000001",
-            "type": "Pothole",
-            "severity": "High",
-            "address": "123 Main St, Near Central Park",
-            "description": "Large deep pothole blocking right lane.",
-            "lat": 18.6298,
-            "lon": 73.7997,
-            "status": "Submitted",
-            "created_at": "2026-03-20T10:30:00",
-            "image_url": None,
-        },
-        {
-            "id": 2,
-            "report_id": "REP-1710000002",
-            "type": "Streetlight Outage",
-            "severity": "Medium",
-            "address": "45 MG Road, Crossroad 4",
-            "description": "Two consecutive streetlights are dark.",
-            "lat": 18.6350,
-            "lon": 73.8050,
-            "status": "In Progress",
-            "created_at": "2026-03-19T14:15:00",
-            "image_url": None,
-        },
-    ]
+# Connect to Supabase using secrets
+supabase_url = st.secrets["SUPABASE_URL"].strip().rstrip("/")
+supabase_key = st.secrets["SUPABASE_KEY"].strip()
+supabase = create_client(supabase_url, supabase_key)
+
 
 # ==========================================
-# 2. SIDEBAR NAVIGATION
+# 2. HELPER FUNCTIONS
+# ==========================================
+def fetch_reports():
+    """Fetch all reports ordered by creation time from Supabase."""
+    try:
+        response = (
+            supabase.table("reports")
+            .select("*")
+            .order("created_at", desc=True)
+            .execute()
+        )
+        return response.data if response.data else []
+    except Exception as e:
+        st.error(f"Error fetching reports: {e}")
+        return []
+
+
+def upload_photo(file, report_id):
+    """Upload photo to Supabase storage bucket 'evidence'."""
+    try:
+        clean_filename = "".join(
+            c for c in file.name if c.isalnum() or c in (".", "_", "-")
+        )
+        file_path = f"{report_id}_{clean_filename}"
+        file_bytes = file.getvalue()
+
+        supabase.storage.from_("evidence").upload(
+            path=file_path, file=file_bytes
+        )
+
+        res = supabase.storage.from_("evidence").get_public_url(file_path)
+
+        if isinstance(res, str):
+            return res
+        elif isinstance(res, dict):
+            return res.get("publicUrl") or res.get("public_url")
+        return str(res)
+    except Exception as e:
+        st.warning(f"Image upload note: {e}")
+        return None
+
+
+# ==========================================
+# 3. SIDEBAR NAVIGATION
 # ==========================================
 if "role" not in st.session_state:
     st.session_state.role = "Citizen"
@@ -75,11 +94,11 @@ with st.sidebar:
     )
 
 # ==========================================
-# 3. MODULE 1: REPORT HAZARD
+# 4. MODULE 1: REPORT HAZARD
 # ==========================================
 if nav_choice == "📷 Report Hazard":
     st.header("Report Infrastructure Issue")
-    st.caption("Submit new civic hazard report for municipal tracking.")
+    st.caption("Submissions are permanently saved to Supabase.")
 
     st.subheader("1. Live GPS Location Capture")
     location = streamlit_geolocation()
@@ -166,8 +185,11 @@ if nav_choice == "📷 Report Hazard":
             else:
                 rep_id = f"REP-{int(datetime.now().timestamp())}"
 
-                new_report = {
-                    "id": len(st.session_state.reports) + 1,
+                image_url = None
+                if uploaded_file is not None:
+                    image_url = upload_photo(uploaded_file, rep_id)
+
+                row_data = {
                     "report_id": str(rep_id),
                     "type": str(final_category),
                     "severity": str(severity),
@@ -176,22 +198,26 @@ if nav_choice == "📷 Report Hazard":
                     "lat": float(user_lat),
                     "lon": float(user_lon),
                     "status": "Submitted",
-                    "created_at": datetime.now().isoformat(),
-                    "image_url": None,
+                    "image_url": str(image_url) if image_url else None,
                 }
 
-                st.session_state.reports.insert(0, new_report)
-                st.success(f"Report **{rep_id}** recorded locally!")
-                st.balloons()
+                try:
+                    supabase.table("reports").insert(row_data).execute()
+                    st.success(
+                        f"Report **{rep_id}** saved permanently in Supabase!"
+                    )
+                    st.balloons()
+                except Exception as e:
+                    st.error(f"Database save error: {e}")
 
 # ==========================================
-# 4. MODULE 2: ISSUE TRACKER & OPERATIONS
+# 5. MODULE 2: ISSUE TRACKER & OPERATIONS
 # ==========================================
 elif nav_choice == "🛣️ Issue Tracker & Operations":
     st.header("Municipal Operations Dashboard")
-    st.caption("Live dynamic queue view.")
+    st.caption("Live dynamic queue synced with Supabase.")
 
-    reports = st.session_state.reports
+    reports = fetch_reports()
 
     total_reps = len(reports)
     pending_reps = sum(
@@ -211,9 +237,9 @@ elif nav_choice == "🛣️ Issue Tracker & Operations":
     st.divider()
 
     if not reports:
-        st.info("No active reports logged.")
+        st.info("No live reports in database yet.")
     else:
-        for idx_pos, report in enumerate(reports):
+        for report in reports:
             row_id = report["id"]
             rep_id = report.get("report_id", "REP-UNKNOWN")
 
@@ -223,7 +249,7 @@ elif nav_choice == "🛣️ Issue Tracker & Operations":
                 c1, c2, c3 = st.columns([2, 2, 2])
                 with c1:
                     st.write(
-                        f"**Logged At:** {str(report.get('created_at', ''))[:16]}"
+                        f"**Logged At:** {report.get('created_at', '')[:16]}"
                     )
                     st.write(f"**Address:** {report.get('address')}")
                 with c2:
@@ -245,7 +271,7 @@ elif nav_choice == "🛣️ Issue Tracker & Operations":
                             "In Progress",
                             "Resolved",
                         ]
-                        s_idx = (
+                        idx = (
                             status_options.index(curr_status)
                             if curr_status in status_options
                             else 0
@@ -254,12 +280,14 @@ elif nav_choice == "🛣️ Issue Tracker & Operations":
                         new_status = st.selectbox(
                             "Update Status",
                             status_options,
-                            index=s_idx,
+                            index=idx,
                             key=f"status_{row_id}",
                         )
 
                         if new_status != curr_status:
-                            st.session_state.reports[idx_pos]["status"] = new_status
+                            supabase.table("reports").update(
+                                {"status": new_status}
+                            ).eq("id", row_id).execute()
                             st.success("Status updated!")
                             st.rerun()
 
@@ -268,19 +296,19 @@ elif nav_choice == "🛣️ Issue Tracker & Operations":
                 if report.get("image_url"):
                     st.image(
                         report["image_url"],
-                        caption="Evidence Photo",
+                        caption="Cloud Evidence Photo",
                         width=300,
                     )
 
 # ==========================================
-# 5. MODULE 3: ANALYTICS & SPATIAL HEATMAP
+# 6. MODULE 3: ANALYTICS & SPATIAL HEATMAP
 # ==========================================
 elif nav_choice == "📊 Analytics & Spatial Heatmap":
     st.header("Real-Time Spatial Analytics")
-    reports = st.session_state.reports
+    reports = fetch_reports()
 
     if not reports:
-        st.info("No spatial data available.")
+        st.info("No spatial data available in database.")
     else:
         df_reports = pd.DataFrame(reports)
 
