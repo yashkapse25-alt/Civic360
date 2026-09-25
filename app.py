@@ -113,20 +113,14 @@ img_src = (
     else "https://cdn-icons-png.flaticon.com/512/7581/7581561.png"
 )
 
-# Render Top Executive Header with Namaste Custom Images on Left & Right Corners
+# Render Top Centered Header with Namaste Custom Images & Centered Greeting
 top_header_html = f"""
-<div style="background-color: #001f3f; color: #ffffff; padding: 10px 20px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">
-    <div style="display: flex; align-items: center; gap: 10px;">
-        <img src="{img_src}" width="36" height="36" style="border-radius: 50%; vertical-align: middle; object-fit: contain;"/>
-        <span style="font-size: 16px; font-weight: 700; color: #FFCC00; letter-spacing: 0.5px;">WELCOME TO CIVIC360 PORTAL</span>
-    </div>
-    <div style="font-size: 14px; font-weight: 600; color: #FFFFFF; font-style: italic;">
-        स्वागतम् | Public Redressal Portal
-    </div>
-    <div style="display: flex; align-items: center; gap: 10px;">
-        <span style="font-size: 16px; font-weight: 700; color: #FFCC00; letter-spacing: 0.5px;">WELCOME</span>
-        <img src="{img_src}" width="36" height="36" style="border-radius: 50%; vertical-align: middle; object-fit: contain;"/>
-    </div>
+<div style="background-color: #001f3f; color: #ffffff; padding: 12px 20px; border-radius: 6px; display: flex; justify-content: center; align-items: center; gap: 16px; margin-bottom: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">
+    <img src="{img_src}" width="38" height="38" style="border-radius: 50%; vertical-align: middle; object-fit: contain;"/>
+    <span style="font-size: 18px; font-weight: 700; color: #FFCC00; letter-spacing: 1px; text-align: center;">
+        WELCOME || सुस्वागतम्
+    </span>
+    <img src="{img_src}" width="38" height="38" style="border-radius: 50%; vertical-align: middle; object-fit: contain;"/>
 </div>
 
 <!-- Government Tri-Color Line -->
