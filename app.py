@@ -127,19 +127,42 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Render Top Government Ribbon
-st.markdown('<div class="gov-top-bar"></div>', unsafe_allow_html=True)
-
-# Render Welcome Banner with Namaste Greeting & Dynamic Sanskrit Slogan
+# Render Top Header with Namaste Hands on Left & Right Corners + Welcome Text
 st.markdown(
     """
-    <div style="text-align: center; margin-top: 5px; margin-bottom: 8px;">
-        <span style="background-color: #FFF3CD; color: #856404; font-size: 15px; font-weight: bold; padding: 6px 18px; border-radius: 20px; border: 1px solid #FFEEBA; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-            <img src="https://img.icons8.com/color/48/namaste.png" width="24" height="24" style="vertical-align: middle;"/> 
-            WELCOME TO CIVIC360 — CITIZEN PORTAL | स्वागतम् 🙏
-        </span>
+    <div style="background-color: #001f3f; color: #ffffff; padding: 10px 20px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">
+        <!-- Left Corner: Namaste Icon & Welcome -->
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#FF9933" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M7 11V7a2 2 0 0 1 4 0v4"/>
+                <path d="M11 11V5a2 2 0 0 1 4 0v6"/>
+                <path d="M15 11V3a2 2 0 0 1 4 0v11"/>
+                <path d="M19 14.5a4.5 4.5 0 0 1-9 0V11a2 2 0 0 0-4 0v4.5A8.5 8.5 0 0 0 14.5 24"/>
+            </svg>
+            <span style="font-size: 16px; font-weight: 700; color: #FFCC00; letter-spacing: 0.5px;">WELCOME TO CIVIC360 PORTAL</span>
+        </div>
+
+        <!-- Center Tag -->
+        <div style="font-size: 14px; font-weight: 600; color: #FFFFFF; font-style: italic;">
+            स्वागतम् | Public Redressal Portal
+        </div>
+
+        <!-- Right Corner: Welcome & Namaste Icon -->
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 16px; font-weight: 700; color: #FFCC00; letter-spacing: 0.5px;">WELCOME</span>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#FF9933" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M7 11V7a2 2 0 0 1 4 0v4"/>
+                <path d="M11 11V5a2 2 0 0 1 4 0v6"/>
+                <path d="M15 11V3a2 2 0 0 1 4 0v11"/>
+                <path d="M19 14.5a4.5 4.5 0 0 1-9 0V11a2 2 0 0 0-4 0v4.5A8.5 8.5 0 0 0 14.5 24"/>
+            </svg>
+        </div>
     </div>
 
+    <!-- Government Tri-Color Line -->
+    <div class="gov-top-bar"></div>
+
+    <!-- Sliding Sanskrit Slogan Ticker -->
     <div class="slogan-ticker-container">
         <div class="slogan-ticker-text">
             <b>• बहुजनहिताय बहुजनसुखाय •</b> &nbsp;|&nbsp; <i>Bahujanahitāya Bahujanasukhāya</i> &nbsp;|&nbsp; 
