@@ -23,21 +23,48 @@ st.set_page_config(
     layout="wide",
 )
 
-# Custom CSS for Official Government Aesthetic
+# Custom CSS for Official Government Aesthetic & Dynamic Slogan Ticker
 st.markdown(
     """
     <style>
-    /* Government Header Bar */
+    /* Government Header Ribbon */
     .gov-top-bar {
         background: linear-gradient(90deg, #FF9933 0%, #FFFFFF 50%, #128807 100%);
         height: 6px;
         border-radius: 3px;
-        margin-bottom: 10px;
+        margin-bottom: 5px;
     }
+    
+    /* Dynamic Sanskrit Slogan Sliding Marquee */
+    .slogan-ticker-container {
+        background-color: #001a33;
+        color: #ffcc00;
+        overflow: hidden;
+        white-space: nowrap;
+        box-sizing: border-box;
+        padding: 8px 0;
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+        border-bottom: 2px solid #FF9933;
+        margin-bottom: 15px;
+        border-radius: 4px;
+    }
+    .slogan-ticker-text {
+        display: inline-block;
+        padding-left: 100%;
+        animation: marquee 22s linear infinite;
+    }
+    @keyframes marquee {
+        0%   { transform: translate(0, 0); }
+        100% { transform: translate(-100%, 0); }
+    }
+
+    /* Official Government Banner Header */
     .gov-header {
         background-color: #002244;
         color: #ffffff;
-        padding: 15px 25px;
+        padding: 18px 25px;
         border-radius: 8px;
         margin-bottom: 20px;
         box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
@@ -54,6 +81,7 @@ st.markdown(
         font-size: 13px;
         margin: 0;
     }
+    
     /* Card Styles */
     .gov-card {
         background-color: #ffffff;
@@ -63,6 +91,7 @@ st.markdown(
         box-shadow: 0 2px 6px rgba(0,0,0,0.08);
         margin-bottom: 15px;
     }
+    
     /* Step Badges */
     .step-badge {
         background-color: #003366;
@@ -74,13 +103,15 @@ st.markdown(
         display: inline-block;
         margin-bottom: 8px;
     }
+    
     /* Metric Cards */
     div[data-testid="stMetricValue"] {
         font-size: 28px;
         color: #002244;
         font-weight: bold;
     }
-    /* Footer */
+    
+    /* Official Footer */
     .gov-footer {
         background-color: #f8f9fa;
         border-top: 2px solid #003366;
@@ -98,6 +129,19 @@ st.markdown(
 
 # Render Top Government Ribbon
 st.markdown('<div class="gov-top-bar"></div>', unsafe_allow_html=True)
+
+# Render Dynamic Sliding Sanskrit Slogan
+st.markdown(
+    """
+    <div class="slogan-ticker-container">
+        <div class="slogan-ticker-text">
+            🏛️ <b>बहुजनहिताय बहुजनसुखाय</b> | <i>Bahujanahitāya Bahujanasukhāya</i> | 
+            <b>Meaning:</b> "For the welfare of the many, for the happiness of the many" — Dedicated to Public Service & Civic Welfare
+        </div>
+    </div>
+""",
+    unsafe_allow_html=True,
+)
 
 # Supabase Credentials
 supabase_url = st.secrets["SUPABASE_URL"].strip().rstrip("/")
