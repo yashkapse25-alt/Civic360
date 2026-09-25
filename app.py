@@ -373,6 +373,68 @@ if app_mode == "Submit Public Grievance":
             """
             )
 
+        if submit_btn:
+    if not description or not citizen_name:
+        st.error("⚠️ Please fill in all required fields (Name and Description).")
+    else:
+        all_records = get_all_complaints()
+        complaint_id = f"C360-{1001 + len(all_records)}"
+        sla_info = SLA_MAPPING[issue_type]
+        expected_date = (
+            datetime.now() + timedelta(days=sla_info["days"])
+        ).strftime("%Y-%m-%d")
+
+        # Variable for Image URL
+        image_url = None
+
+        # Upload Image to Supabase Storage if file was provided
+        if uploaded_file is not None and supabase is not None:
+            try:
+                file_bytes = uploaded_file.getvalue()
+                file_path = f"public/{complaint_id}_{uploaded_file.name}"
+
+                # Upload to 'complaint-images' bucket
+                supabase.storage.from_("complaint-images").upload(
+                    file_path, file_bytes
+                )
+
+                # Get Public URL for the uploaded file
+                image_url = supabase.storage.from_(
+                    "complaint-images"
+                ).get_public_url(file_path)
+            except Exception as e:
+                st.warning(
+                    f"⚠️ Image storage note: {e}. Submitting complaint without image link."
+                )
+
+        new_record = {
+            "complaint_id": complaint_id,
+            "category": issue_type,
+            "description": description,
+            "location": f"{st.session_state.get('lat', 18.6298)}, {st.session_state.get('lon', 73.7997)}",
+            "status": "Registered",
+            "department": sla_info["dept"],
+            "submitted_on": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "expected_sla": expected_date,
+            "image_url": image_url,  # Saves public image link to table
+        }
+
+        saved_to_db = False
+        if supabase:
+            try:
+                supabase.table("complaints").insert(new_record).execute()
+                saved_to_db = True
+            except Exception:
+                pass
+
+        if not saved_to_db:
+            if "complaints_db" not in st.session_state:
+                st.session_state["complaints_db"] = []
+            st.session_state["complaints_db"].append(new_record)
+
+        st.balloons()
+        st.success("🎉 **Grievance Registered Successfully!**")
+
 # -------------------- MODULE 2: TRACK COMPLAINT --------------------
 elif app_mode == "Track Complaint Status":
     st.subheader("🔍 Track Your Grievance Status")
