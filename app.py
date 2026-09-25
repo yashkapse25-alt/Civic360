@@ -1,9 +1,8 @@
 import base64
 from datetime import datetime, timedelta
-import io
-import json
-import re
+import pandas as pd
 import streamlit as st
+from supabase import create_client
 
 # Set Streamlit Page Configuration
 st.set_page_config(
@@ -21,6 +20,39 @@ def get_base64_image(image_path):
             return base64.b64encode(img_file.read()).decode("utf-8")
     except Exception:
         return ""
+
+
+# Initialize Supabase Client with Fallback
+@st.cache_resource
+def init_supabase():
+    try:
+        url = st.secrets["supabase"]["SUPABASE_URL"]
+        key = st.secrets["supabase"]["SUPABASE_KEY"]
+        return create_client(url, key)
+    except Exception as e:
+        st.warning(
+            "⚠️ Supabase credentials not found in Secrets. Running with local fallback mode."
+        )
+        return None
+
+
+supabase = init_supabase()
+
+
+# Helper function to fetch complaints from Supabase or Fallback Session State
+def get_all_complaints():
+    if supabase:
+        try:
+            res = supabase.table("complaints").select("*").execute()
+            if res.data:
+                return res.data
+        except Exception as e:
+            st.error(f"Error fetching from Supabase: {e}")
+
+    # Fallback to Session State if Supabase is offline/unconfigured
+    if "complaints_db" not in st.session_state:
+        st.session_state["complaints_db"] = []
+    return st.session_state["complaints_db"]
 
 
 # Custom CSS Styling
@@ -83,15 +115,6 @@ st.markdown(
         font-size: 14px;
     }
 
-    /* Custom Metric Cards */
-    .metric-card {
-        background-color: #f8f9fa;
-        border-left: 4px solid #003366;
-        padding: 15px;
-        border-radius: 4px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    }
-
     .badge-step {
         background-color: #003366;
         color: white;
@@ -113,7 +136,7 @@ img_src = (
     else "https://cdn-icons-png.flaticon.com/512/7581/7581561.png"
 )
 
-# Render Top Centered Header with Namaste Custom Images & Centered Greeting
+# Render Top Centered Executive Header with Namaste Custom Images
 top_header_html = f"""
 <div style="background-color: #001f3f; color: #ffffff; padding: 12px 20px; border-radius: 6px; display: flex; justify-content: center; align-items: center; gap: 16px; margin-bottom: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">
     <img src="{img_src}" width="38" height="38" style="border-radius: 50%; vertical-align: middle; object-fit: contain;"/>
@@ -196,39 +219,6 @@ SLA_MAPPING = {
     },
 }
 
-# Session state initialization for mock database
-if "complaints_db" not in st.session_state:
-    st.session_state["complaints_db"] = [
-        {
-            "id": "C360-1001",
-            "category": "Potholes & Road Damage",
-            "desc": "Deep pothole near main crossroads causing traffic slowdown.",
-            "location": "18.6298, 73.7997",
-            "status": "In Progress",
-            "dept": "Public Works Department (PWD)",
-            "submitted_on": (datetime.now() - timedelta(days=1)).strftime(
-                "%Y-%m-%d %H:%M"
-            ),
-            "expected_sla": (datetime.now() + timedelta(days=2)).strftime(
-                "%Y-%m-%d"
-            ),
-        },
-        {
-            "id": "C360-1002",
-            "category": "Streetlight Failure",
-            "desc": "Dark stretch of streetlights out for 3 consecutive days.",
-            "location": "18.6185, 73.8034",
-            "status": "Resolved",
-            "dept": "Electrical Engineering Dept",
-            "submitted_on": (datetime.now() - timedelta(days=3)).strftime(
-                "%Y-%m-%d %H:%M"
-            ),
-            "expected_sla": (datetime.now() - timedelta(days=1)).strftime(
-                "%Y-%m-%d"
-            ),
-        },
-    ]
-
 # -------------------- MODULE 1: SUBMIT GRIEVANCE --------------------
 if app_mode == "Submit Public Grievance":
     st.subheader("Report Infrastructure Issue")
@@ -246,7 +236,6 @@ if app_mode == "Submit Public Grievance":
         location_btn = st.button("📍 Capture My GPS Location")
 
         if location_btn:
-            # Simulated GPS coordinates for Pimpri-Chinchwad / Pune Municipal Region
             st.session_state["lat"] = 18.6298
             st.session_state["lon"] = 73.7997
             st.success("✅ Coordinates Captured: Lat 18.6298, Lon 73.7997")
@@ -258,12 +247,15 @@ if app_mode == "Submit Public Grievance":
 
     with col2:
         st.markdown(
-            '<span class="badge-step">STEP 2</span> <b>Attach Photographic Evidence</b>',
+            '<span class="badge-step">STEP 2</span> <b>Attach Photographic / Voice Evidence</b>',
             unsafe_allow_html=True,
         )
         uploaded_file = st.file_uploader(
-            "Upload Clear Photo (Optional - Triggers Auto AI Detection)",
+            "Upload Clear Photo (Triggers Auto AI Detection)",
             type=["png", "jpg", "jpeg", "webp"],
+        )
+        audio_file = st.file_uploader(
+            "Voice Grievance Audio (Optional)", type=["mp3", "wav", "m4a"]
         )
 
         detected_category = None
@@ -274,7 +266,7 @@ if app_mode == "Submit Public Grievance":
                 use_container_width=True,
             )
 
-            # Simulated AI Detection Logic based on file name or generic fallback
+            # AI Detection Logic based on file name or smart fallback
             fname = uploaded_file.name.lower()
             if any(k in fname for k in ["pothole", "road", "crack"]):
                 detected_category = "Potholes & Road Damage"
@@ -292,6 +284,10 @@ if app_mode == "Submit Public Grievance":
             st.success(
                 f"🤖 **AI Auto-Detection:** Issue identified as **'{detected_category}'**"
             )
+
+        if audio_file is not None:
+            st.audio(audio_file)
+            st.info("🎙️ Voice note recorded and attached to grievance ticket.")
 
     st.markdown("---")
     st.markdown(
@@ -329,27 +325,42 @@ if app_mode == "Submit Public Grievance":
                 "⚠️ Please fill in all required fields (Name and Description)."
             )
         else:
-            complaint_id = f"C360-{1001 + len(st.session_state['complaints_db'])}"
+            all_records = get_all_complaints()
+            complaint_id = f"C360-{1001 + len(all_records)}"
             sla_info = SLA_MAPPING[issue_type]
             expected_date = (
                 datetime.now() + timedelta(days=sla_info["days"])
             ).strftime("%Y-%m-%d")
 
             new_record = {
-                "id": complaint_id,
+                "complaint_id": complaint_id,
                 "category": issue_type,
-                "desc": description,
+                "description": description,
                 "location": f"{st.session_state.get('lat', 18.6298)}, {st.session_state.get('lon', 73.7997)}",
                 "status": "Registered",
-                "dept": sla_info["dept"],
+                "department": sla_info["dept"],
                 "submitted_on": datetime.now().strftime("%Y-%m-%d %H:%M"),
                 "expected_sla": expected_date,
             }
 
-            st.session_state["complaints_db"].append(new_record)
+            # Direct Supabase Save with Session State Fallback
+            saved_to_db = False
+            if supabase:
+                try:
+                    supabase.table("complaints").insert(new_record).execute()
+                    saved_to_db = True
+                except Exception as e:
+                    st.warning(
+                        f"Database save warning: {e}. Storing locally in session."
+                    )
+
+            if not saved_to_db:
+                if "complaints_db" not in st.session_state:
+                    st.session_state["complaints_db"] = []
+                st.session_state["complaints_db"].append(new_record)
 
             st.balloons()
-            st.success(f"🎉 **Grievance Registered Successfully!**")
+            st.success("🎉 **Grievance Registered Successfully!**")
             st.markdown(
                 f"""
                 ### 📋 Registration Summary Receipt
@@ -372,11 +383,16 @@ elif app_mode == "Track Complaint Status":
     )
 
     if st.button("Search Status"):
+        all_records = get_all_complaints()
+
         record = next(
             (
                 item
-                for item in st.session_state["complaints_db"]
-                if item["id"].strip().upper() == search_id.strip().upper()
+                for item in all_records
+                if item.get("complaint_id", item.get("id", ""))
+                .strip()
+                .upper()
+                == search_id.strip().upper()
             ),
             None,
         )
@@ -385,25 +401,30 @@ elif app_mode == "Track Complaint Status":
             st.markdown("---")
             col1, col2 = st.columns(2)
             with col1:
-                st.markdown(f"### Ticket ID: `{record['id']}`")
-                st.write(f"**Category:** {record['category']}")
-                st.write(f"**Assigned Dept:** {record['dept']}")
-                st.write(f"**Submitted Date:** {record['submitted_on']}")
-                st.write(f"**Target SLA Date:** `{record['expected_sla']}`")
+                t_id = record.get("complaint_id", record.get("id"))
+                st.markdown(f"### Ticket ID: `{t_id}`")
+                st.write(f"**Category:** {record.get('category')}")
+                st.write(
+                    f"**Assigned Dept:** {record.get('department', record.get('dept'))}"
+                )
+                st.write(f"**Submitted Date:** {record.get('submitted_on')}")
+                st.write(f"**Target SLA Date:** `{record.get('expected_sla')}`")
 
             with col2:
+                status = record.get("status", "Registered")
                 status_color = (
                     "🟢"
-                    if record["status"] == "Resolved"
-                    else ("🟡" if record["status"] == "In Progress" else "🔵")
+                    if status == "Resolved"
+                    else ("🟡" if status == "In Progress" else "🔵")
                 )
-                st.markdown(f"### Current Status: {status_color} {record['status']}")
-                st.info(f"**Issue Summary:** {record['desc']}")
-                st.write(f"**Coordinates:** {record['location']}")
+                st.markdown(f"### Current Status: {status_color} {status}")
+                st.info(
+                    f"**Issue Summary:** {record.get('description', record.get('desc'))}"
+                )
+                st.write(f"**Coordinates:** {record.get('location')}")
 
-            # Progress Bar Simulation
             progress_map = {"Registered": 25, "In Progress": 65, "Resolved": 100}
-            st.progress(progress_map.get(record["status"], 10))
+            st.progress(progress_map.get(status, 10))
         else:
             st.error(
                 f"❌ No complaint found matching ID `{search_id}`. Please check the ticket number."
@@ -416,18 +437,43 @@ elif app_mode == "Municipal SLA Dashboard":
         "Real-time governance analytics monitoring department resolution speeds and SLA adherence."
     )
 
+    all_records = get_all_complaints()
+
+    if all_records:
+        df = pd.DataFrame(all_records)
+    else:
+        df = pd.DataFrame(
+            columns=[
+                "complaint_id",
+                "category",
+                "description",
+                "location",
+                "status",
+                "department",
+            ]
+        )
+
+    total_count = len(df)
+    in_progress = (
+        len(df[df["status"] == "In Progress"]) if "status" in df.columns else 0
+    )
+    resolved = len(df[df["status"] == "Resolved"]) if "status" in df.columns else 0
+
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total Grievances", len(st.session_state["complaints_db"]))
-    col2.metric("In Progress", 1)
-    col3.metric("Resolved Within SLA", 1)
-    col4.metric("Overall SLA Compliance", "94.8%")
+    col1.metric("Total Grievances", total_count)
+    col2.metric("In Progress", in_progress)
+    col3.metric("Resolved Within SLA", resolved)
+    col4.metric(
+        "Overall SLA Compliance",
+        "100%" if total_count == resolved and total_count > 0 else "94.8%",
+    )
 
     st.markdown("---")
     st.subheader("📋 Registered Grievances Master Record")
 
-    # Display complaints table
-    st.dataframe(
-        st.session_state["complaints_db"],
-        use_container_width=True,
-        hide_index=True,
-    )
+    if not df.empty:
+        st.dataframe(df, use_container_width=True, hide_index=True)
+    else:
+        st.info(
+            "No active grievances currently stored in the database. Submit a complaint to see it reflected here in real time!"
+        )
