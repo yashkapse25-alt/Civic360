@@ -8,3 +8,5 @@ scikit-learn
 tensorflow-cpu
 joblib
 plotly
+folium
+streamlit-folium
