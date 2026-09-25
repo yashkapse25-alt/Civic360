@@ -22,22 +22,42 @@ def get_base64_image(image_path):
         return ""
 
 
-# Initialize Supabase Client with Fallback
+# Initialize Supabase Client with Flexible Secrets Checking
 @st.cache_resource
 def init_supabase():
     try:
-        url = st.secrets["supabase"]["SUPABASE_URL"]
-        key = st.secrets["supabase"]["SUPABASE_KEY"]
-        return create_client(url, key)
+        # Check inside [supabase] block first
+        if "supabase" in st.secrets:
+            url = st.secrets["supabase"].get(
+                "SUPABASE_URL"
+            ) or st.secrets["supabase"].get("url")
+            key = st.secrets["supabase"].get(
+                "SUPABASE_KEY"
+            ) or st.secrets["supabase"].get("key")
+        # Check root level secrets fallback
+        else:
+            url = st.secrets.get("SUPABASE_URL") or st.secrets.get(
+                "supabase_url"
+            )
+            key = st.secrets.get("SUPABASE_KEY") or st.secrets.get(
+                "supabase_key"
+            )
+
+        if url and key:
+            return create_client(url, key)
+        else:
+            st.warning(
+                "⚠️ Supabase URL or Key missing in Secrets. Running with local fallback mode."
+            )
+            return None
     except Exception as e:
         st.warning(
-            "⚠️ Supabase credentials not found in Secrets. Running with local fallback mode."
+            f"⚠️ Could not load secrets: {e}. Running with local fallback mode."
         )
         return None
 
 
 supabase = init_supabase()
-
 
 # Helper function to fetch complaints from Supabase or Fallback Session State
 def get_all_complaints():
