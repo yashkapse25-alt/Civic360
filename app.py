@@ -130,9 +130,16 @@ st.markdown(
 # Render Top Government Ribbon
 st.markdown('<div class="gov-top-bar"></div>', unsafe_allow_html=True)
 
-# Render Dynamic Sliding Sanskrit Slogan
+# Render Welcome Banner with Namaste Greeting & Dynamic Sanskrit Slogan
 st.markdown(
     """
+    <div style="text-align: center; margin-top: 5px; margin-bottom: 8px;">
+        <span style="background-color: #FFF3CD; color: #856404; font-size: 15px; font-weight: bold; padding: 6px 18px; border-radius: 20px; border: 1px solid #FFEEBA; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+            <img src="https://img.icons8.com/color/48/namaste.png" width="24" height="24" style="vertical-align: middle;"/> 
+            WELCOME TO CIVIC360 — CITIZEN PORTAL | स्वागतम् 🙏
+        </span>
+    </div>
+
     <div class="slogan-ticker-container">
         <div class="slogan-ticker-text">
             <b>• बहुजनहिताय बहुजनसुखाय •</b> &nbsp;|&nbsp; <i>Bahujanahitāya Bahujanasukhāya</i> &nbsp;|&nbsp; 
