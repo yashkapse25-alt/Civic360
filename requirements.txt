@@ -1,4 +1,10 @@
 streamlit
 supabase
-pandas
 streamlit-geolocation
+pandas
+numpy
+pillow
+scikit-learn
+tensorflow-cpu
+joblib
+plotly
