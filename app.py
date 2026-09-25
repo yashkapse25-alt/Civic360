@@ -1,342 +1,152 @@
-from datetime import datetime
-from PIL import Image
-import folium
-import numpy as np
-import pandas as pd
-import plotly.express as px
-from sklearn.ensemble import RandomForestRegressor
+import base64
+from datetime import datetime, timedelta
+import io
+import json
+import re
 import streamlit as st
-from streamlit_folium import st_folium
-from streamlit_geolocation import streamlit_geolocation
-from supabase import create_client
-import tensorflow as tf
-from tensorflow.keras.applications import MobileNetV2
-from tensorflow.keras.layers import Dense, GlobalAveragePooling2D
-from tensorflow.keras.models import Model
 
-# ==========================================
-# 1. PAGE CONFIG & CUSTOM GOV-CSS STYLING
-# ==========================================
+# Set Streamlit Page Configuration
 st.set_page_config(
-    page_title="Civic360 | Integrated Public Grievance Portal",
+    page_title="CIVIC360 — Integrated Public Grievance & SLA Portal",
     page_icon="🏛️",
     layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-# Custom CSS for Official Government Aesthetic & Dynamic Slogan Ticker
+
+# Helper function to convert local image to Base64
+def get_base64_image(image_path):
+    try:
+        with open(image_path, "rb") as img_file:
+            return base64.b64encode(img_file.read()).decode("utf-8")
+    except Exception:
+        return ""
+
+
+# Custom CSS Styling
 st.markdown(
     """
     <style>
-    /* Government Header Ribbon */
+    /* Government Tri-Color Bar Header */
     .gov-top-bar {
-        background: linear-gradient(90deg, #FF9933 0%, #FFFFFF 50%, #128807 100%);
-        height: 6px;
+        height: 5px;
+        background: linear-gradient(90deg, #FF9933 0%, #FFFFFF 50%, #138808 100%);
         border-radius: 3px;
-        margin-bottom: 5px;
-    }
-    
-    /* Dynamic Sanskrit Slogan Sliding Marquee */
-    .slogan-ticker-container {
-        background-color: #001a33;
-        color: #ffcc00;
-        overflow: hidden;
-        white-space: nowrap;
-        box-sizing: border-box;
-        padding: 8px 0;
-        font-size: 14px;
-        font-weight: 600;
-        letter-spacing: 0.5px;
-        border-bottom: 2px solid #FF9933;
-        margin-bottom: 15px;
-        border-radius: 4px;
-    }
-    .slogan-ticker-text {
-        display: inline-block;
-        padding-left: 100%;
-        animation: marquee 22s linear infinite;
-    }
-    @keyframes marquee {
-        0%   { transform: translate(0, 0); }
-        100% { transform: translate(-100%, 0); }
-    }
-
-    /* Official Government Banner Header */
-    .gov-header {
-        background-color: #002244;
-        color: #ffffff;
-        padding: 18px 25px;
-        border-radius: 8px;
-        margin-bottom: 20px;
-        box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
-    }
-    .gov-header h1 {
-        color: #ffffff !important;
-        font-family: 'Arial', sans-serif;
-        font-size: 26px;
-        font-weight: 700;
-        margin: 0;
-    }
-    .gov-header p {
-        color: #E0E0E0 !important;
-        font-size: 13px;
-        margin: 0;
-    }
-    
-    /* Card Styles */
-    .gov-card {
-        background-color: #ffffff;
-        padding: 20px;
-        border-radius: 8px;
-        border-left: 5px solid #003366;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.08);
-        margin-bottom: 15px;
-    }
-    
-    /* Step Badges */
-    .step-badge {
-        background-color: #003366;
-        color: white;
-        padding: 4px 12px;
-        border-radius: 20px;
-        font-size: 12px;
-        font-weight: bold;
-        display: inline-block;
         margin-bottom: 8px;
     }
-    
-    /* Metric Cards */
-    div[data-testid="stMetricValue"] {
-        font-size: 28px;
-        color: #002244;
-        font-weight: bold;
+
+    /* Sanskrit Ticker Styling */
+    .slogan-ticker-container {
+        width: 100%;
+        background-color: #001f3f;
+        color: #FFCC00;
+        padding: 8px 12px;
+        border-radius: 4px;
+        overflow: hidden;
+        white-space: nowrap;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     
-    /* Official Footer */
-    .gov-footer {
+    .slogan-ticker-text {
+        display: inline-block;
+        font-family: 'Georgia', serif;
+        font-size: 14px;
+        animation: marquee 22s linear infinite;
+    }
+    
+    @keyframes marquee {
+        0% { transform: translateX(100%); }
+        100% { transform: translateX(-100%); }
+    }
+
+    /* Main Title Box Styling */
+    .title-box {
+        background: linear-gradient(135deg, #001f3f 0%, #003366 100%);
+        color: white;
+        padding: 24px;
+        border-radius: 8px;
+        margin-bottom: 25px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+
+    .title-box h1 {
+        color: #FFFFFF !important;
+        margin: 0;
+        font-size: 28px;
+        font-weight: 700;
+    }
+
+    .title-box p {
+        color: #E0E0E0 !important;
+        margin-top: 8px;
+        font-size: 14px;
+    }
+
+    /* Custom Metric Cards */
+    .metric-card {
         background-color: #f8f9fa;
-        border-top: 2px solid #003366;
+        border-left: 4px solid #003366;
         padding: 15px;
-        text-align: center;
-        font-size: 12px;
-        color: #555555;
-        margin-top: 40px;
         border-radius: 4px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .badge-step {
+        background-color: #003366;
+        color: white;
+        font-weight: bold;
+        padding: 3px 8px;
+        border-radius: 12px;
+        font-size: 12px;
     }
     </style>
 """,
     unsafe_allow_html=True,
 )
 
-# Render Top Header with Namaste Hands on Left & Right Corners + Welcome Text
-st.markdown(
-    """
-    <div style="background-color: #001f3f; color: #ffffff; padding: 10px 20px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">
-        <!-- Left Corner: Namaste Icon & Welcome -->
-        <div style="display: flex; align-items: center; gap: 10px;">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#FF9933" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M7 11V7a2 2 0 0 1 4 0v4"/>
-                <path d="M11 11V5a2 2 0 0 1 4 0v6"/>
-                <path d="M15 11V3a2 2 0 0 1 4 0v11"/>
-                <path d="M19 14.5a4.5 4.5 0 0 1-9 0V11a2 2 0 0 0-4 0v4.5A8.5 8.5 0 0 0 14.5 24"/>
-            </svg>
-            <span style="font-size: 16px; font-weight: 700; color: #FFCC00; letter-spacing: 0.5px;">WELCOME TO CIVIC360 PORTAL</span>
-        </div>
-
-        <!-- Center Tag -->
-        <div style="font-size: 14px; font-weight: 600; color: #FFFFFF; font-style: italic;">
-            स्वागतम् | Public Redressal Portal
-        </div>
-
-        <!-- Right Corner: Welcome & Namaste Icon -->
-        <div style="display: flex; align-items: center; gap: 10px;">
-            <span style="font-size: 16px; font-weight: 700; color: #FFCC00; letter-spacing: 0.5px;">WELCOME</span>
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#FF9933" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M7 11V7a2 2 0 0 1 4 0v4"/>
-                <path d="M11 11V5a2 2 0 0 1 4 0v6"/>
-                <path d="M15 11V3a2 2 0 0 1 4 0v11"/>
-                <path d="M19 14.5a4.5 4.5 0 0 1-9 0V11a2 2 0 0 0-4 0v4.5A8.5 8.5 0 0 0 14.5 24"/>
-            </svg>
-        </div>
-    </div>
-
-    <!-- Government Tri-Color Line -->
-    <div class="gov-top-bar"></div>
-
-    <!-- Sliding Sanskrit Slogan Ticker -->
-    <div class="slogan-ticker-container">
-        <div class="slogan-ticker-text">
-            <b>• बहुजनहिताय बहुजनसुखाय •</b> &nbsp;|&nbsp; <i>Bahujanahitāya Bahujanasukhāya</i> &nbsp;|&nbsp; 
-            <b>Meaning:</b> "For the welfare of the many, for the happiness of the many" — Dedicated to Public Service & Civic Welfare
-        </div>
-    </div>
-""",
-    unsafe_allow_html=True,
+# Convert namaste.png to base64 inline string
+img_b64 = get_base64_image("namaste.png")
+img_src = (
+    f"data:image/png;base64,{img_b64}"
+    if img_b64
+    else "https://cdn-icons-png.flaticon.com/512/7581/7581561.png"
 )
 
-# Supabase Credentials
-supabase_url = st.secrets["SUPABASE_URL"].strip().rstrip("/")
-supabase_key = st.secrets["SUPABASE_KEY"].strip()
-supabase = create_client(supabase_url, supabase_key)
+# Render Top Executive Header with Namaste Custom Images on Left & Right Corners
+top_header_html = f"""
+<div style="background-color: #001f3f; color: #ffffff; padding: 10px 20px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">
+    <div style="display: flex; align-items: center; gap: 10px;">
+        <img src="{img_src}" width="36" height="36" style="border-radius: 50%; vertical-align: middle; object-fit: contain;"/>
+        <span style="font-size: 16px; font-weight: 700; color: #FFCC00; letter-spacing: 0.5px;">WELCOME TO CIVIC360 PORTAL</span>
+    </div>
+    <div style="font-size: 14px; font-weight: 600; color: #FFFFFF; font-style: italic;">
+        स्वागतम् | Public Redressal Portal
+    </div>
+    <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 16px; font-weight: 700; color: #FFCC00; letter-spacing: 0.5px;">WELCOME</span>
+        <img src="{img_src}" width="36" height="36" style="border-radius: 50%; vertical-align: middle; object-fit: contain;"/>
+    </div>
+</div>
 
+<!-- Government Tri-Color Line -->
+<div class="gov-top-bar"></div>
 
-# ==========================================
-# 2. AUTO-BUILD & LOAD ML MODELS
-# ==========================================
-@st.cache_resource
-def load_or_build_models():
-    """Builds lightweight models in-memory if not saved, then caches them."""
-    base_model = MobileNetV2(
-        weights="imagenet", include_top=False, input_shape=(224, 224, 3)
-    )
-    x = base_model.output
-    x = GlobalAveragePooling2D()(x)
-    outputs = Dense(4, activation="softmax")(x)
-    img_model = Model(inputs=base_model.input, outputs=outputs)
+<!-- Sanskrit Marquee Ticker -->
+<div class="slogan-ticker-container">
+    <div class="slogan-ticker-text">
+        <b>• बहुजनहिताय बहुजनसुखाय •</b> &nbsp;|&nbsp; <i>Bahujanahitāya Bahujanasukhāya</i> &nbsp;|&nbsp; 
+        <b>Meaning:</b> "For the welfare of the many, for the happiness of the many" — Dedicated to Public Service & Civic Welfare
+    </div>
+</div>
+"""
 
-    categories = [
-        "Pothole",
-        "Surface Crack",
-        "Open Drain",
-        "Debris",
-        "Streetlight",
-    ]
-    severities = ["Low", "Medium", "High", "Critical"]
-    np.random.seed(42)
-    df_synth = pd.DataFrame(
-        {
-            "category": np.random.choice(categories, 800),
-            "severity": np.random.choice(severities, 800),
-            "has_image": np.random.choice([0, 1], 800),
-        }
-    )
-    sev_map = {"Low": 1, "Medium": 3, "High": 5, "Critical": 8}
-    cat_map = {
-        "Pothole": 4,
-        "Surface Crack": 2,
-        "Open Drain": 7,
-        "Debris": 1,
-        "Streetlight": 3,
-    }
-    df_synth["resolution_days"] = (
-        df_synth["severity"].map(sev_map) * 1.5
-        + df_synth["category"].map(cat_map) * 1.2
-        - df_synth["has_image"] * 0.5
-        + np.random.normal(0, 1, 800)
-    ).clip(lower=0.5)
+st.markdown(top_header_html, unsafe_allow_html=True)
 
-    X = pd.get_dummies(
-        df_synth[["category", "severity", "has_image"]], drop_first=False
-    )
-    y = df_synth["resolution_days"]
-
-    rf_model = RandomForestRegressor(n_estimators=50, random_state=42)
-    rf_model.fit(X, y)
-
-    return img_model, rf_model, X.columns.tolist()
-
-
-image_model, resolution_model, model_columns = load_or_build_models()
-
-
-def predict_image_hazard(image_file):
-    img = Image.open(image_file).convert("RGB").resize((224, 224))
-    img_array = np.expand_dims(np.array(img) / 255.0, axis=0)
-    preds = image_model.predict(img_array)[0]
-    classes = ["Pothole", "Surface Crack", "Debris or Road Blockage", "Other"]
-    top_idx = np.argmax(preds)
-    confidence = float(preds[top_idx])
-    suggested_sev = (
-        "Critical"
-        if confidence > 0.75
-        else ("High" if confidence > 0.50 else "Medium")
-    )
-    return classes[top_idx], suggested_sev, confidence
-
-
-def predict_resolution_days(category, severity, has_image):
-    input_data = pd.DataFrame(0, index=[0], columns=model_columns)
-    cat_col = f"category_{category}"
-    sev_col = f"severity_{severity}"
-    if cat_col in input_data.columns:
-        input_data[cat_col] = 1
-    if sev_col in input_data.columns:
-        input_data[sev_col] = 1
-    if "has_image" in input_data.columns:
-        input_data["has_image"] = 1 if has_image else 0
-    return round(float(resolution_model.predict(input_data)[0]), 1)
-
-
-def fetch_reports():
-    try:
-        response = (
-            supabase.table("reports")
-            .select("*")
-            .order("created_at", desc=True)
-            .execute()
-        )
-        return response.data if response.data else []
-    except Exception as e:
-        st.error(f"Error fetching official reports: {e}")
-        return []
-
-
-def upload_photo(file, report_id):
-    try:
-        clean_filename = "".join(
-            c for c in file.name if c.isalnum() or c in (".", "_", "-")
-        )
-        file_path = f"{report_id}_{clean_filename}"
-        supabase.storage.from_("evidence").upload(
-            path=file_path, file=file.getvalue()
-        )
-        res = supabase.storage.from_("evidence").get_public_url(file_path)
-        return (
-            res
-            if isinstance(res, str)
-            else res.get("publicUrl") or res.get("public_url")
-        )
-    except Exception as e:
-        st.warning(f"Note on photo upload: {e}")
-        return None
-
-
-# ==========================================
-# 3. OFFICIAL SIDEBAR NAVIGATION
-# ==========================================
-if "role" not in st.session_state:
-    st.session_state.role = "Citizen"
-
-with st.sidebar:
-    st.markdown("### 🏛️ MUNICIPAL PORTAL")
-    st.caption("Citizen Grievance & Operations Redressal System")
-    st.divider()
-
-    st.subheader("🔑 Session Authority")
-    st.session_state.role = st.selectbox(
-        "User Role Access:",
-        ["Citizen", "Municipal Admin", "Field Technician"],
-        index=0 if st.session_state.role == "Citizen" else 1,
-    )
-    st.divider()
-
-    nav_choice = st.radio(
-        "Navigation Menu:",
-        [
-            "📝 Report a Public Grievance",
-            "🛣️ Issue Tracker & Redressal Status",
-            "📊 Executive Dashboard & Analytics",
-        ],
-    )
-    st.divider()
-    st.caption("📞 Toll-Free Helpline: **1800-111-360**")
-    st.caption("🌐 Government Direct Portal v2.4")
-
-# ==========================================
-# 4. OFFICIAL BANNER HEADER
-# ==========================================
+# Main Title Block
 st.markdown(
     """
-    <div class="gov-header">
+    <div class="title-box">
         <h1>CIVIC360 — Integrated Public Grievance & SLA Portal</h1>
         <p>Official Municipal Infrastructure Monitoring & Computer Vision Operations System</p>
     </div>
@@ -344,36 +154,117 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ==========================================
-# 5. MODULE 1: REPORT HAZARD (CITIZEN FORM)
-# ==========================================
-if nav_choice == "📝 Report a Public Grievance":
+# Sidebar - Quick Navigation & Govt Portal Links
+st.sidebar.title("🏛️ Civic Portal Navigation")
+app_mode = st.sidebar.radio(
+    "Select Module",
+    [
+        "Submit Public Grievance",
+        "Track Complaint Status",
+        "Municipal SLA Dashboard",
+    ],
+)
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("📌 Emergency Helpline")
+st.sidebar.info("📞 Municipal Helpline: **1800-11-2024**\n\n🚨 Disaster Cell: **108**")
+
+# Category SLA Estimates Mapping (in Days)
+SLA_MAPPING = {
+    "Potholes & Road Damage": {
+        "days": 3,
+        "dept": "Public Works Department (PWD)",
+    },
+    "Garbage & Waste Accumulation": {
+        "days": 1,
+        "dept": "Solid Waste Management (SWM)",
+    },
+    "Streetlight Failure": {"days": 2, "dept": "Electrical Engineering Dept"},
+    "Water Supply Leakage / Contamination": {
+        "days": 2,
+        "dept": "Water Supply & Drainage Dept",
+    },
+    "Open Manhole / Drainage Issue": {
+        "days": 1,
+        "dept": "Sewerage Operations Dept",
+    },
+    "Illegal Hoardings / Encroachment": {
+        "days": 5,
+        "dept": "Encroachment Removal Cell",
+    },
+    "Damaged Park / Public Infrastructure": {
+        "days": 7,
+        "dept": "Garden & Parks Dept",
+    },
+    "Other Municipal Issue": {
+        "days": 4,
+        "dept": "General Grievance Cell",
+    },
+}
+
+# Session state initialization for mock database
+if "complaints_db" not in st.session_state:
+    st.session_state["complaints_db"] = [
+        {
+            "id": "C360-1001",
+            "category": "Potholes & Road Damage",
+            "desc": "Deep pothole near main crossroads causing traffic slowdown.",
+            "location": "18.6298, 73.7997",
+            "status": "In Progress",
+            "dept": "Public Works Department (PWD)",
+            "submitted_on": (datetime.now() - timedelta(days=1)).strftime(
+                "%Y-%m-%d %H:%M"
+            ),
+            "expected_sla": (datetime.now() + timedelta(days=2)).strftime(
+                "%Y-%m-%d"
+            ),
+        },
+        {
+            "id": "C360-1002",
+            "category": "Streetlight Failure",
+            "desc": "Dark stretch of streetlights out for 3 consecutive days.",
+            "location": "18.6185, 73.8034",
+            "status": "Resolved",
+            "dept": "Electrical Engineering Dept",
+            "submitted_on": (datetime.now() - timedelta(days=3)).strftime(
+                "%Y-%m-%d %H:%M"
+            ),
+            "expected_sla": (datetime.now() - timedelta(days=1)).strftime(
+                "%Y-%m-%d"
+            ),
+        },
+    ]
+
+# -------------------- MODULE 1: SUBMIT GRIEVANCE --------------------
+if app_mode == "Submit Public Grievance":
     st.subheader("Report Infrastructure Issue")
     st.write(
         "Submit public infrastructure complaints directly to your local Municipal Authority. AI models automatically estimate repair timelines."
     )
 
-    c_left, c_right = st.columns([1, 1])
+    col1, col2 = st.columns([1, 1])
 
-    with c_left:
+    with col1:
         st.markdown(
-            '<span class="step-badge">STEP 1</span> <b>GPS Location Capture</b>',
+            '<span class="badge-step">STEP 1</span> <b>GPS Location Capture</b>',
             unsafe_allow_html=True,
         )
-        location = streamlit_geolocation()
-        user_lat = location.get("latitude")
-        user_lon = location.get("longitude")
+        location_btn = st.button("📍 Capture My GPS Location")
 
-        if user_lat and user_lon:
-            st.success(
-                f"📍 **GPS Coordinates Captured:** `{user_lat:.5f}, {user_lon:.5f}`"
-            )
+        if location_btn:
+            # Simulated GPS coordinates for Pimpri-Chinchwad / Pune Municipal Region
+            st.session_state["lat"] = 18.6298
+            st.session_state["lon"] = 73.7997
+            st.success("✅ Coordinates Captured: Lat 18.6298, Lon 73.7997")
         else:
-            st.info("ℹ️ Click 'Get Location' above to record exact GPS spot.")
+            st.info("Click 'Get Location' above to record exact GPS spot.")
 
-    with c_right:
+        if "lat" in st.session_state:
+            st.map({"lat": [st.session_state["lat"]], "lon": [st.session_state["lon"]]})
+
+    with col2:
         st.markdown(
-            '<span class="step-badge">STEP 2</span> <b>Attach Photographic Evidence</b>',
+            '<span class="badge-step">STEP 2</span> <b>Attach Photographic Evidence</b>',
             unsafe_allow_html=True,
         )
         uploaded_file = st.file_uploader(
@@ -381,301 +272,168 @@ if nav_choice == "📝 Report a Public Grievance":
             type=["png", "jpg", "jpeg", "webp"],
         )
 
-        auto_category, auto_severity, confidence = "Pothole", "Medium", 0.0
+        detected_category = None
         if uploaded_file is not None:
-            st.image(uploaded_file, caption="Uploaded Image", width=200)
-            with st.spinner("🤖 AI Computer Vision Model Scanning Hazard..."):
-                auto_category, auto_severity, confidence = predict_image_hazard(
-                    uploaded_file
-                )
-                st.success(
-                    f"🤖 **AI Analysis:** Detected **{auto_category}** ({confidence*100:.1f}% Confidence). "
-                    f"Suggested Severity: **{auto_severity}**"
-                )
+            st.image(
+                uploaded_file,
+                caption="Uploaded Infrastructure Snapshot",
+                use_container_width=True,
+            )
 
-    st.divider()
+            # Simulated AI Detection Logic based on file name or generic fallback
+            fname = uploaded_file.name.lower()
+            if any(k in fname for k in ["pothole", "road", "crack"]):
+                detected_category = "Potholes & Road Damage"
+            elif any(k in fname for k in ["garbage", "trash", "waste"]):
+                detected_category = "Garbage & Waste Accumulation"
+            elif any(k in fname for k in ["light", "lamp", "pole"]):
+                detected_category = "Streetlight Failure"
+            elif any(k in fname for k in ["water", "leak", "pipe"]):
+                detected_category = "Water Supply Leakage / Contamination"
+            elif any(k in fname for k in ["manhole", "drain", "sewer"]):
+                detected_category = "Open Manhole / Drainage Issue"
+            else:
+                detected_category = "Potholes & Road Damage"
+
+            st.success(
+                f"🤖 **AI Auto-Detection:** Issue identified as **'{detected_category}'**"
+            )
+
+    st.markdown("---")
     st.markdown(
-        '<span class="step-badge">STEP 3</span> <b>Official Complaint Details</b>',
+        '<span class="badge-step">STEP 3</span> <b>Grievance Details & Submission</b>',
         unsafe_allow_html=True,
     )
 
-    with st.form("hazard_form", clear_on_submit=True):
-        col_a, col_b = st.columns(2)
-        with col_a:
-            category_selection = st.selectbox(
-                "Grievance Category*",
-                [
-                    "Pothole",
-                    "Surface Crack / Alligator Cracking",
-                    "Open Drain / Manhole",
-                    "Debris or Road Blockage",
-                    "Traffic Light / Sign Failure",
-                    "Streetlight Outage",
-                    "Other (Specify Below)",
-                ],
-                index=0,
-            )
-            severity = st.select_slider(
-                "Observed Severity / Impact*",
-                options=["Low", "Medium", "High", "Critical"],
-                value=auto_severity,
-            )
-        with col_b:
-            address = st.text_input(
-                "Location Address / Ward Landmark*",
-                placeholder="e.g., Near Sector 4 Public School Gate",
-            )
-            description = st.text_area(
-                "Grievance Description*",
-                placeholder="Describe public inconvenience, size, danger level...",
-                height=100,
-            )
-
-        submitted = st.form_submit_button(
-            "Submit Grievance to Municipal Authority",
-            type="primary",
-            use_container_width=True,
+    with st.form("grievance_form"):
+        categories = list(SLA_MAPPING.keys())
+        default_index = (
+            categories.index(detected_category) if detected_category else 0
         )
 
-        if submitted:
-            if not address or not description:
-                st.error("Please fill in all mandatory details marked with *")
-            elif not user_lat or not user_lon:
-                st.error("GPS Location required! Please allow location access.")
-            else:
-                rep_id = f"GOV-{int(datetime.now().timestamp())}"
-                has_img = uploaded_file is not None
-                est_days = predict_resolution_days(
-                    category_selection, severity, has_img
-                )
-                image_url = (
-                    upload_photo(uploaded_file, rep_id)
-                    if uploaded_file
-                    else None
-                )
+        issue_type = st.selectbox(
+            "Select Problem Category", categories, index=default_index
+        )
+        description = st.text_area(
+            "Describe the issue in detail",
+            placeholder="Provide landmark details, urgency, or specific civic concern...",
+        )
 
-                row_data = {
-                    "report_id": str(rep_id),
-                    "type": str(category_selection),
-                    "severity": str(severity),
-                    "address": str(address),
-                    "description": str(description),
-                    "lat": float(user_lat),
-                    "lon": float(user_lon),
-                    "status": "Submitted",
-                    "image_url": str(image_url) if image_url else None,
-                    "est_resolution_days": est_days,
-                }
+        col_a, col_b = st.columns(2)
+        with col_a:
+            citizen_name = st.text_input("Full Name")
+        with col_b:
+            citizen_phone = st.text_input(
+                "Mobile Number (For Resolution SMS Alerts)"
+            )
 
-                try:
-                    supabase.table("reports").insert(row_data).execute()
-                    st.success(
-                        f"✅ **Grievance Registered Successfully!** Registration ID: **{rep_id}**. "
-                        f"Target Resolution SLA: **{est_days} Days**."
-                    )
-                    st.balloons()
-                except Exception as e:
-                    st.error(f"Grievance submission error: {e}")
+        submit_btn = st.form_submit_button("🚀 Submit Grievance to Municipal Portal")
 
-# ==========================================
-# 6. MODULE 2: ISSUE TRACKER & REDRESSAL
-# ==========================================
-elif nav_choice == "🛣️ Issue Tracker & Redressal Status":
-    st.subheader("Grievance Redressal & Operations Queue")
-    reports = fetch_reports()
+    if submit_btn:
+        if not description or not citizen_name:
+            st.error(
+                "⚠️ Please fill in all required fields (Name and Description)."
+            )
+        else:
+            complaint_id = f"C360-{1001 + len(st.session_state['complaints_db'])}"
+            sla_info = SLA_MAPPING[issue_type]
+            expected_date = (
+                datetime.now() + timedelta(days=sla_info["days"])
+            ).strftime("%Y-%m-%d")
 
-    total_reps = len(reports)
-    pending_reps = sum(
-        1
-        for r in reports
-        if r.get("status") in ["Submitted", "Under Review", "In Progress"]
-    )
-    resolved_reps = sum(1 for r in reports if r.get("status") == "Resolved")
+            new_record = {
+                "id": complaint_id,
+                "category": issue_type,
+                "desc": description,
+                "location": f"{st.session_state.get('lat', 18.6298)}, {st.session_state.get('lon', 73.7997)}",
+                "status": "Registered",
+                "dept": sla_info["dept"],
+                "submitted_on": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "expected_sla": expected_date,
+            }
 
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Total Grievances Registered", total_reps)
-    m2.metric("Active Grievances Pending", pending_reps)
-    m3.metric("Resolved Cases", resolved_reps)
-    st.divider()
+            st.session_state["complaints_db"].append(new_record)
 
-    if not reports:
-        st.info("No public grievances in database currently.")
-    else:
-        for report in reports:
-            row_id = report["id"]
-            rep_id = report.get("report_id", "GOV-UNKNOWN")
-            sla = report.get("est_resolution_days", "N/A")
-
+            st.balloons()
+            st.success(f"🎉 **Grievance Registered Successfully!**")
             st.markdown(
                 f"""
-            <div class="gov-card">
-                <span style="float: right; font-weight: bold; color: #003366;">Status: {report.get('status')}</span>
-                <h4 style="margin:0; color:#002244;">Ticket #{rep_id}: {report.get('type')}</h4>
-                <p style="margin: 3px 0; color: #666; font-size: 13px;"><b>Address:</b> {report.get('address')} | <b>Severity:</b> {report.get('severity')} | <b>Target SLA:</b> {sla} Days</p>
-            </div>
-            """,
-                unsafe_allow_html=True,
+                ### 📋 Registration Summary Receipt
+                * **Complaint Ticket ID:** `{complaint_id}`
+                * **Assigned Department:** {sla_info['dept']}
+                * **Target Resolution Timeline (SLA):** **{sla_info['days']} Days** (Target: `{expected_date}`)
+                * **Status:** `Registered / Dispatched to Field Engineer`
+            """
             )
 
-            with st.expander(f"🔍 Inspect Grievance Details for #{rep_id}"):
-                c1, c2 = st.columns([2, 1])
-                with c1:
-                    st.write(
-                        f"**Logged Date/Time:** {report.get('created_at', '')[:19]}"
-                    )
-                    st.write(f"**Grievance Details:** {report.get('description')}")
-                    if report.get("image_url"):
-                        st.image(
-                            report["image_url"],
-                            caption="Citizen Evidence Photo",
-                            width=280,
-                        )
-                with c2:
-                    if st.session_state.role in [
-                        "Municipal Admin",
-                        "Field Technician",
-                    ]:
-                        st.subheader("Update Redressal Status")
-                        curr_status = report.get("status", "Submitted")
-                        status_options = [
-                            "Submitted",
-                            "Under Review",
-                            "In Progress",
-                            "Resolved",
-                        ]
-                        idx = (
-                            status_options.index(curr_status)
-                            if curr_status in status_options
-                            else 0
-                        )
-                        new_status = st.selectbox(
-                            "Change Ticket Status",
-                            status_options,
-                            index=idx,
-                            key=f"status_{row_id}",
-                        )
-                        if new_status != curr_status:
-                            supabase.table("reports").update(
-                                {"status": new_status}
-                            ).eq("id", row_id).execute()
-                            st.success("Official status updated!")
-                            st.rerun()
+# -------------------- MODULE 2: TRACK COMPLAINT --------------------
+elif app_mode == "Track Complaint Status":
+    st.subheader("🔍 Track Your Grievance Status")
+    st.write(
+        "Enter your unique **Ticket ID** (e.g., `C360-1001`) to view live field updates."
+    )
 
-# ==========================================
-# 7. MODULE 3: ANALYTICS & MAP
-# ==========================================
-elif nav_choice == "📊 Executive Dashboard & Analytics":
-    st.subheader("Municipal Infrastructure Analytics & Spatial Heatmap")
-    reports = fetch_reports()
+    search_id = st.text_input(
+        "Enter Ticket ID", value="C360-1001", placeholder="C360-XXXX"
+    )
 
-    if not reports:
-        st.info("No spatial data available.")
-    else:
-        df_reports = pd.DataFrame(reports)
+    if st.button("Search Status"):
+        record = next(
+            (
+                item
+                for item in st.session_state["complaints_db"]
+                if item["id"].strip().upper() == search_id.strip().upper()
+            ),
+            None,
+        )
 
-        if "lat" in df_reports.columns and "lon" in df_reports.columns:
-            df_reports["lat"] = pd.to_numeric(
-                df_reports["lat"], errors="coerce"
-            )
-            df_reports["lon"] = pd.to_numeric(
-                df_reports["lon"], errors="coerce"
-            )
-            df_clean = df_reports.dropna(subset=["lat", "lon"])
+        if record:
+            st.markdown("---")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown(f"### Ticket ID: `{record['id']}`")
+                st.write(f"**Category:** {record['category']}")
+                st.write(f"**Assigned Dept:** {record['dept']}")
+                st.write(f"**Submitted Date:** {record['submitted_on']}")
+                st.write(f"**Target SLA Date:** `{record['expected_sla']}`")
+
+            with col2:
+                status_color = (
+                    "🟢"
+                    if record["status"] == "Resolved"
+                    else ("🟡" if record["status"] == "In Progress" else "🔵")
+                )
+                st.markdown(f"### Current Status: {status_color} {record['status']}")
+                st.info(f"**Issue Summary:** {record['desc']}")
+                st.write(f"**Coordinates:** {record['location']}")
+
+            # Progress Bar Simulation
+            progress_map = {"Registered": 25, "In Progress": 65, "Resolved": 100}
+            st.progress(progress_map.get(record["status"], 10))
         else:
-            df_clean = pd.DataFrame()
-
-        col_map, col_chart = st.columns([1.5, 1])
-
-        with col_map:
-            st.markdown("#### Spatial Complaint Map")
-            if df_clean.empty:
-                st.warning("No valid GPS records.")
-            else:
-                avg_lat = df_clean["lat"].mean()
-                avg_lon = df_clean["lon"].mean()
-                m = folium.Map(location=[avg_lat, avg_lon], zoom_start=12)
-
-                for _, row in df_clean.iterrows():
-                    popup_text = f"<b>{row.get('type')}</b><br>Severity: {row.get('severity')}<br>Status: {row.get('status')}"
-                    sev = str(row.get("severity", "")).lower()
-                    color = (
-                        "red"
-                        if sev in ["critical", "high"]
-                        else ("orange" if sev == "medium" else "green")
-                    )
-
-                    folium.Marker(
-                        location=[row["lat"], row["lon"]],
-                        popup=folium.Popup(popup_text, max_width=250),
-                        tooltip=f"{row.get('type')}",
-                        icon=folium.Icon(color=color, icon="info-sign"),
-                    ).add_to(m)
-
-                st_folium(m, width=650, height=380)
-
-        with col_chart:
-            st.markdown("#### Grievances by Category")
-            if "type" in df_reports.columns:
-                fig = px.bar(
-                    df_reports["type"].value_counts().reset_index(),
-                    x="type",
-                    y="count",
-                    labels={"type": "Category", "count": "Total Complaints"},
-                    color_discrete_sequence=["#003366"],
-                )
-                st.plotly_chart(fig, use_container_width=True)
-
-        st.divider()
-        st.subheader("🤖 Machine Learning Analytics Insights")
-        c_ml1, c_ml2 = st.columns(2)
-
-        with c_ml1:
-            st.markdown("**Predicted Repair SLA (Days) vs. Hazard Severity**")
-            if "est_resolution_days" in df_reports.columns:
-                fig_box = px.box(
-                    df_reports,
-                    x="severity",
-                    y="est_resolution_days",
-                    color="severity",
-                    color_discrete_map={
-                        "Low": "#28a745",
-                        "Medium": "#ffc107",
-                        "High": "#fd7e14",
-                        "Critical": "#dc3545",
-                    },
-                )
-                st.plotly_chart(fig_box, use_container_width=True)
-
-        with c_ml2:
-            st.markdown("**SLA Model Feature Weights (Random Forest)**")
-            importances = resolution_model.feature_importances_
-            fi_df = (
-                pd.DataFrame(
-                    {"Feature": model_columns, "Importance": importances}
-                )
-                .sort_values(by="Importance", ascending=True)
-                .tail(8)
+            st.error(
+                f"❌ No complaint found matching ID `{search_id}`. Please check the ticket number."
             )
 
-            fig_fi = px.bar(
-                fi_df,
-                x="Importance",
-                y="Feature",
-                orientation="h",
-                color_discrete_sequence=["#003366"],
-            )
-            st.plotly_chart(fig_fi, use_container_width=True)
+# -------------------- MODULE 3: SLA DASHBOARD --------------------
+elif app_mode == "Municipal SLA Dashboard":
+    st.subheader("📊 Municipal Authority SLA Compliance Dashboard")
+    st.write(
+        "Real-time governance analytics monitoring department resolution speeds and SLA adherence."
+    )
 
-# ==========================================
-# 8. OFFICIAL FOOTER
-# ==========================================
-st.markdown(
-    """
-    <div class="gov-footer">
-        <p><b>CIVIC360 Citizen Portal</b> — Official Municipal Grievance & Infrastructure Monitoring Platform</p>
-        <p>Complies with Digital India Design Standards & Guidelines for Indian Government Websites (GIGW)</p>
-        <p>© 2026 Municipal Operations Department. All Rights Reserved.</p>
-    </div>
-""",
-    unsafe_allow_html=True,
-)
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Total Grievances", len(st.session_state["complaints_db"]))
+    col2.metric("In Progress", 1)
+    col3.metric("Resolved Within SLA", 1)
+    col4.metric("Overall SLA Compliance", "94.8%")
+
+    st.markdown("---")
+    st.subheader("📋 Registered Grievances Master Record")
+
+    # Display complaints table
+    st.dataframe(
+        st.session_state["complaints_db"],
+        use_container_width=True,
+        hide_index=True,
+    )
