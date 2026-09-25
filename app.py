@@ -4,7 +4,6 @@ import numpy as np
 from PIL import Image
 import pandas as pd
 import plotly.express as px
-import scikit_learn
 from sklearn.ensemble import RandomForestRegressor
 import streamlit as st
 from streamlit_geolocation import streamlit_geolocation
