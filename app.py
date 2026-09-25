@@ -135,7 +135,7 @@ st.markdown(
     """
     <div class="slogan-ticker-container">
         <div class="slogan-ticker-text">
-            🏛️ <b>बहुजनहिताय बहुजनसुखाय</b> | <i>Bahujanahitāya Bahujanasukhāya</i> | 
+            <b>• बहुजनहिताय बहुजनसुखाय •</b> &nbsp;|&nbsp; <i>Bahujanahitāya Bahujanasukhāya</i> &nbsp;|&nbsp; 
             <b>Meaning:</b> "For the welfare of the many, for the happiness of the many" — Dedicated to Public Service & Civic Welfare
         </div>
     </div>
