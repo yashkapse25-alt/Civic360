@@ -26,7 +26,6 @@ def get_base64_image(image_path):
 @st.cache_resource
 def init_supabase():
     try:
-        # Check inside [supabase] block first
         if "supabase" in st.secrets:
             url = st.secrets["supabase"].get(
                 "SUPABASE_URL"
@@ -34,7 +33,6 @@ def init_supabase():
             key = st.secrets["supabase"].get(
                 "SUPABASE_KEY"
             ) or st.secrets["supabase"].get("key")
-        # Check root level secrets fallback
         else:
             url = st.secrets.get("SUPABASE_URL") or st.secrets.get(
                 "supabase_url"
@@ -46,18 +44,13 @@ def init_supabase():
         if url and key:
             return create_client(url, key)
         else:
-            st.warning(
-                "⚠️ Supabase URL or Key missing in Secrets. Running with local fallback mode."
-            )
             return None
-    except Exception as e:
-        st.warning(
-            f"⚠️ Could not load secrets: {e}. Running with local fallback mode."
-        )
+    except Exception:
         return None
 
 
 supabase = init_supabase()
+
 
 # Helper function to fetch complaints from Supabase or Fallback Session State
 def get_all_complaints():
@@ -66,10 +59,9 @@ def get_all_complaints():
             res = supabase.table("complaints").select("*").execute()
             if res.data:
                 return res.data
-        except Exception as e:
-            st.error(f"Error fetching from Supabase: {e}")
+        except Exception:
+            pass
 
-    # Fallback to Session State if Supabase is offline/unconfigured
     if "complaints_db" not in st.session_state:
         st.session_state["complaints_db"] = []
     return st.session_state["complaints_db"]
@@ -191,7 +183,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Sidebar - Quick Navigation & Govt Portal Links
+# Sidebar Navigation
 st.sidebar.title("🏛️ Civic Portal Navigation")
 app_mode = st.sidebar.radio(
     "Select Module",
@@ -267,15 +259,12 @@ if app_mode == "Submit Public Grievance":
 
     with col2:
         st.markdown(
-            '<span class="badge-step">STEP 2</span> <b>Attach Photographic / Voice Evidence</b>',
+            '<span class="badge-step">STEP 2</span> <b>Attach Photographic Evidence</b>',
             unsafe_allow_html=True,
         )
         uploaded_file = st.file_uploader(
             "Upload Clear Photo (Triggers Auto AI Detection)",
             type=["png", "jpg", "jpeg", "webp"],
-        )
-        audio_file = st.file_uploader(
-            "Voice Grievance Audio (Optional)", type=["mp3", "wav", "m4a"]
         )
 
         detected_category = None
@@ -304,10 +293,6 @@ if app_mode == "Submit Public Grievance":
             st.success(
                 f"🤖 **AI Auto-Detection:** Issue identified as **'{detected_category}'**"
             )
-
-        if audio_file is not None:
-            st.audio(audio_file)
-            st.info("🎙️ Voice note recorded and attached to grievance ticket.")
 
     st.markdown("---")
     st.markdown(
@@ -363,16 +348,13 @@ if app_mode == "Submit Public Grievance":
                 "expected_sla": expected_date,
             }
 
-            # Direct Supabase Save with Session State Fallback
             saved_to_db = False
             if supabase:
                 try:
                     supabase.table("complaints").insert(new_record).execute()
                     saved_to_db = True
-                except Exception as e:
-                    st.warning(
-                        f"Database save warning: {e}. Storing locally in session."
-                    )
+                except Exception:
+                    pass
 
             if not saved_to_db:
                 if "complaints_db" not in st.session_state:
