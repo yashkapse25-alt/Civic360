@@ -12,7 +12,8 @@ import tensorflow as tf
 from tensorflow.keras.applications import MobileNetV2
 from tensorflow.keras.layers import Dense, GlobalAveragePooling2D
 from tensorflow.keras.models import Model
-
+from streamlit_folium import st_folium
+import folium
 # ==========================================
 # 1. PAGE CONFIG & SUPABASE SETUP
 # ==========================================
@@ -383,11 +384,45 @@ elif nav_choice == "📊 Analytics & Spatial Heatmap":
     else:
         df_reports = pd.DataFrame(reports)
 
+        # ----------------------------------------------------
+        # DATA CLEANING: Ensure lat/lon exist and are numeric
+        # ----------------------------------------------------
+        if "lat" in df_reports.columns and "lon" in df_reports.columns:
+            df_reports["lat"] = pd.to_numeric(df_reports["lat"], errors="coerce")
+            df_reports["lon"] = pd.to_numeric(df_reports["lon"], errors="coerce")
+            df_clean = df_reports.dropna(subset=["lat", "lon"])
+        else:
+            df_clean = pd.DataFrame()
+
         col_map, col_chart = st.columns([1.5, 1])
+
         with col_map:
             st.subheader("Live Spatial Coordinates Map")
-            if "lat" in df_reports.columns and "lon" in df_reports.columns:
-                st.map(df_reports[["lat", "lon"]], zoom=12)
+            if df_clean.empty:
+                st.warning("⚠️ No valid GPS coordinates available in database records.")
+            else:
+                # Center map around average coordinates
+                avg_lat = df_clean["lat"].mean()
+                avg_lon = df_clean["lon"].mean()
+
+                m = folium.Map(location=[avg_lat, avg_lon], zoom_start=12)
+
+                # Add interactive markers for each report
+                for _, row in df_clean.iterrows():
+                    popup_text = f"<b>{row.get('type', 'Hazard')}</b><br>Severity: {row.get('severity', 'N/A')}<br>Status: {row.get('status', 'N/A')}"
+                    
+                    # Color-code pin based on severity
+                    sev = str(row.get("severity", "")).lower()
+                    color = "red" if sev in ["critical", "high"] else ("orange" if sev == "medium" else "green")
+
+                    folium.Marker(
+                        location=[row["lat"], row["lon"]],
+                        popup=folium.Popup(popup_text, max_width=250),
+                        tooltip=f"{row.get('type')} ({row.get('severity')})",
+                        icon=folium.Icon(color=color, icon="info-sign")
+                    ).add_to(m)
+
+                st_folium(m, width=650, height=400)
 
         with col_chart:
             st.subheader("Submissions by Classification")
@@ -403,6 +438,8 @@ elif nav_choice == "📊 Analytics & Spatial Heatmap":
                 st.plotly_chart(fig, use_container_width=True)
 
         st.divider()
+
+        # ML Insights Section
         st.subheader("🤖 Machine Learning Model Insights")
         c_ml1, c_ml2 = st.columns(2)
 
@@ -428,6 +465,7 @@ elif nav_choice == "📊 Analytics & Spatial Heatmap":
                 .sort_values(by="Importance", ascending=True)
                 .tail(8)
             )
+
             fig_fi = px.bar(
                 fi_df,
                 x="Importance",
