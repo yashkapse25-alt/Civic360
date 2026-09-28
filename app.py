@@ -1,5 +1,6 @@
 import base64
 from datetime import datetime, timedelta
+import uuid
 import pandas as pd
 import streamlit as st
 from supabase import create_client
@@ -56,11 +57,16 @@ supabase = init_supabase()
 def get_all_complaints():
     if supabase:
         try:
-            res = supabase.table("complaints").select("*").execute()
-            if res.data:
+            res = (
+                supabase.table("complaints")
+                .select("*")
+                .order("submitted_on", desc=True)
+                .execute()
+            )
+            if res.data is not None:
                 return res.data
-        except Exception:
-            pass
+        except Exception as e:
+            st.sidebar.error(f"Supabase Fetch Warning: {e}")
 
     if "complaints_db" not in st.session_state:
         st.session_state["complaints_db"] = []
@@ -324,8 +330,12 @@ if app_mode == "Submit Public Grievance":
                 "⚠️ Please fill in all required fields (Name and Description)."
             )
         else:
-            all_records = get_all_complaints()
-            complaint_id = f"C360-{1001 + len(all_records)}"
+            # Generate Unique ID using Timestamp + Random Hex Suffix
+            unique_suffix = str(uuid.uuid4().hex[:4]).upper()
+            complaint_id = (
+                f"C360-{datetime.now().strftime('%M%S')}-{unique_suffix}"
+            )
+
             sla_info = SLA_MAPPING[issue_type]
             expected_date = (
                 datetime.now() + timedelta(days=sla_info["days"])
@@ -344,8 +354,8 @@ if app_mode == "Submit Public Grievance":
                     image_url = supabase.storage.from_(
                         "complaint-images"
                     ).get_public_url(file_path)
-                except Exception:
-                    pass
+                except Exception as img_err:
+                    st.warning(f"Note on Image Upload: {img_err}")
 
             new_record = {
                 "complaint_id": complaint_id,
@@ -362,15 +372,21 @@ if app_mode == "Submit Public Grievance":
             saved_to_db = False
             if supabase:
                 try:
-                    supabase.table("complaints").insert(new_record).execute()
-                    saved_to_db = True
-                except Exception:
-                    pass
+                    res = (
+                        supabase.table("complaints")
+                        .insert(new_record)
+                        .execute()
+                    )
+                    if res.data:
+                        saved_to_db = True
+                except Exception as db_err:
+                    st.error(f"❌ Supabase Database Error: {db_err}")
 
             if not saved_to_db:
                 if "complaints_db" not in st.session_state:
                     st.session_state["complaints_db"] = []
                 st.session_state["complaints_db"].append(new_record)
+                st.info("ℹ️ Stored in Local Session Memory.")
 
             st.balloons()
             st.success("🎉 **Grievance Registered Successfully!**")
@@ -387,12 +403,10 @@ if app_mode == "Submit Public Grievance":
 # -------------------- MODULE 2: TRACK COMPLAINT --------------------
 elif app_mode == "Track Complaint Status":
     st.subheader("🔍 Track Your Grievance Status")
-    st.write(
-        "Enter your unique **Ticket ID** (e.g., `C360-1001`) to view live field updates."
-    )
+    st.write("Enter your unique **Ticket ID** to view live field updates.")
 
     search_id = st.text_input(
-        "Enter Ticket ID", value="C360-1001", placeholder="C360-XXXX"
+        "Enter Ticket ID", value="", placeholder="C360-XXXX"
     )
 
     if st.button("Search Status"):
